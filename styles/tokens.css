@@ -26,9 +26,9 @@
   --fs-tiny: 0.75rem;
 
   /* 字体 */
-  --font-display: "LXGW WenKai TC", "LXGW WenKai", "Noto Serif SC", serif;
-  --font-body: "Noto Serif SC", "Songti SC", serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  --font-body: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Menlo", "Consolas", monospace;
 
   /* 间距梯度 */
   --space-1: 4px; --space-2: 8px; --space-3: 16px;
