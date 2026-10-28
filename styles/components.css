@@ -364,6 +364,9 @@
 /* ---------- 管理弹窗与编辑面板 ---------- */
 .form__hint { font-size: var(--fs-tiny); color: var(--color-muted); }
 
+/* hidden 属性必须永远生效（防止 display:flex 覆盖 UA 默认 display:none） */
+[hidden] { display: none !important; }
+
 .modal {
   position: fixed; inset: 0; z-index: 90;
   display: flex; align-items: center; justify-content: center;
