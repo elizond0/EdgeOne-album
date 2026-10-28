@@ -1,0 +1,45 @@
+/* ============================================
+   设计令牌 · 纸质手账 × 拍立得（中性版）
+   定调：暖灰石色纸面为底，古铜赭石为唯一强调色，
+   霞鹜文楷做展示字，思源宋做正文——沉稳的手写温度。
+   ============================================ */
+:root {
+  /* 色彩：中性纸面 60% / 石墨棕辅助 30% / 赭石强调 10% */
+  --color-bg: #f2efe9;            /* 石色纸面 */
+  --color-bg-deep: #e7e3db;       /* 纸面加深 */
+  --color-surface: #fbfaf7;       /* 卡片纸 */
+  --color-text: #2c2a26;          /* 石墨近黑（对比 13.5:1）*/
+  --color-muted: #6e6a61;         /* 弱化文字（对比 4.9:1）*/
+  --color-accent: #7a5c3a;        /* 古铜赭石 */
+  --color-accent-soft: rgba(122, 92, 58, 0.14);
+  --color-tape: rgba(178, 168, 148, 0.55);   /* 麻布胶带 */
+  --color-border: rgba(44, 42, 38, 0.15);
+  --color-night: #262522;         /* 视频区深色底 */
+
+  /* 字阶（模块化 ×1.25）*/
+  --fs-display: clamp(2.75rem, 6vw, 4.5rem);
+  --fs-h1: clamp(2rem, 4vw, 3rem);
+  --fs-h2: clamp(1.375rem, 2.4vw, 1.75rem);
+  --fs-h3: 1.125rem;
+  --fs-body: 1rem;
+  --fs-small: 0.875rem;
+  --fs-tiny: 0.75rem;
+
+  /* 字体 */
+  --font-display: "LXGW WenKai TC", "LXGW WenKai", "Noto Serif SC", serif;
+  --font-body: "Noto Serif SC", "Songti SC", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* 间距梯度 */
+  --space-1: 4px; --space-2: 8px; --space-3: 16px;
+  --space-4: 24px; --space-5: 40px; --space-6: 64px; --space-7: 96px;
+
+  --radius-sm: 4px; --radius-md: 10px; --radius-lg: 18px;
+
+  --shadow-1: 0 2px 8px rgba(62, 58, 50, 0.14);
+  --shadow-2: 0 8px 28px rgba(62, 58, 50, 0.20);
+  --shadow-3: 0 24px 64px rgba(46, 42, 36, 0.28);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 160ms; --dur-base: 320ms; --dur-slow: 640ms;
+}

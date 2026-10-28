@@ -1,0 +1,11 @@
+{
+  "name": "love-album",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "恋爱纪念册 · EdgeOne Pages（静态站 + Node Functions + Blob 存储）",
+  "dependencies": {
+    "@edgeone/pages-blob": "latest",
+    "express": "^4.19.2"
+  }
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" /><!-- 私密分享：禁止搜索引擎收录 -->
+  <title>我们的故事 · 恋爱纪念册</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- 中文手写感展示字霞鹜文楷 + 思源宋正文，font-display swap -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- 顶部导航 -->
+  <header class="nav">
+    <a class="nav__logo" href="#top"><span class="heart" aria-hidden="true">♥</span>我们的故事</a>
+    <nav aria-label="页面导航">
+      <ul class="nav__links">
+        <li><a href="#timeline">时间轴</a></li>
+        <li><a href="#wall">照片墙</a></li>
+        <li><a href="#videos">影像</a></li>
+        <li><a href="#" id="admin-btn" title="管理入口" aria-label="管理入口">🔒</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- 首屏 -->
+    <section class="hero">
+      <div class="hero__copy">
+        <p class="hero__eyebrow">OUR LOVE STORY · EST. <span id="since-year">20XX</span></p>
+        <h1 class="hero__title">把喜欢的日子<br />一张张贴起来<em>，留给你</em></h1>
+        <p class="hero__sub">
+          这里收着我们的照片、走过的路和想说的话。
+          页面会一直更新下去——像我们的故事一样，未完待续。
+        </p>
+        <div class="days" role="status" aria-label="已相恋天数">
+          <span class="days__num" id="days-count">—</span>
+          <span class="days__label">天 · 在一起</span>
+        </div>
+      </div>
+      <!-- 首屏拍立得占位（换 hero.jpg 即可）-->
+      <figure class="hero__photo polaroid reveal">
+        <span class="tape tape--l" aria-hidden="true"></span>
+        <span class="tape tape--r" aria-hidden="true"></span>
+        <img class="polaroid__img" src="assets/photos/photo-05.jpg" alt="首屏照片占位：请替换为你们的合照" />
+        <figcaption class="polaroid__caption">我们<span class="polaroid__date">SINCE <span id="since-date">20XX.XX.XX</span></span></figcaption>
+      </figure>
+    </section>
+
+    <!-- 恋爱时间轴（由 main.js 按 config.js / 云端内容渲染）-->
+    <section class="section" id="timeline">
+      <header class="section__head reveal">
+        <p class="section__eyebrow">CHAPTER 01</p>
+        <h2 class="section__title">时间轴</h2>
+        <p class="section__desc">从「你好」到「在一起」，每一个值得纪念的日子。管理员可在线编辑。</p>
+      </header>
+      <ol class="timeline" id="timeline-list"></ol>
+    </section>
+
+    <!-- 照片墙 -->
+    <section class="section" id="wall">
+      <header class="section__head reveal">
+        <p class="section__eyebrow">CHAPTER 02</p>
+        <h2 class="section__title">照片墙</h2>
+        <p class="section__desc">点击照片可看大图，支持键盘 ← → 切换、Esc 关闭。</p>
+        <button class="btn btn--ghost admin-only" id="upload-photo-btn" type="button" hidden>＋ 上传照片</button>
+        <input id="upload-photo-input" type="file" accept="image/*" multiple hidden />
+      </header>
+      <div class="wall" id="wall-grid">
+        <noscript>
+          <p class="section__desc">需要启用 JavaScript 才能浏览照片墙。</p>
+        </noscript>
+      </div>
+    </section>
+
+    <!-- 影像区 -->
+    <section class="section videos-band" id="videos">
+      <header class="section__head reveal">
+        <p class="section__eyebrow">CHAPTER 03</p>
+        <h2 class="section__title">影像</h2>
+        <p class="section__desc">用照片剪出的短片都收在这里。</p>
+        <button class="btn btn--ghost admin-only" id="upload-video-btn" type="button" hidden>＋ 上传视频</button>
+        <input id="upload-video-input" type="file" accept="video/*" multiple hidden />
+      </header>
+      <div class="videos" id="videos-grid"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>为了我们的纪念日，页面会一直更新下去 <span class="heart" aria-hidden="true">♥</span></p>
+    <p class="form__hint">私密分享页面 · 已设置禁止搜索引擎收录</p>
+  </footer>
+
+  <!-- 管理密钥弹窗 -->
+  <div class="modal" id="token-modal" role="dialog" aria-modal="true" aria-label="管理登录" hidden>
+    <div class="modal__card">
+      <h3 class="modal__title">管理登录</h3>
+      <p class="modal__hint" id="token-hint">输入管理密钥后可上传照片视频、编辑内容。首次使用时，你输入的密钥将被设为管理密钥（至少 6 位）。</p>
+      <input class="modal__input" id="token-input" type="password" placeholder="管理密钥" autocomplete="off" />
+      <p class="modal__error" id="token-error" hidden>密钥不对，再想想。</p>
+      <div class="modal__actions">
+        <button class="btn btn--ghost" id="token-cancel" type="button">取消</button>
+        <button class="btn" id="token-ok" type="button">解锁</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 内容编辑面板 -->
+  <div class="modal" id="edit-modal" role="dialog" aria-modal="true" aria-label="编辑站点内容" hidden>
+    <div class="modal__card modal__card--wide">
+      <h3 class="modal__title">编辑内容</h3>
+      <div class="edit-scroll">
+        <div class="field">
+          <label for="edit-anniversary">纪念日（相恋天数按此计算）</label>
+          <input id="edit-anniversary" type="date" />
+        </div>
+        <h4 class="edit-sub">时间轴节点</h4>
+        <div id="edit-timeline"></div>
+        <button class="btn btn--ghost" id="edit-add" type="button">＋ 添加节点</button>
+      </div>
+      <p class="modal__error" id="edit-error" hidden></p>
+      <div class="modal__actions">
+        <button class="btn btn--ghost" id="edit-cancel" type="button">取消</button>
+        <button class="btn" id="edit-save" type="button">保存到云端</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 灯箱 -->
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="查看大图" hidden>
+    <button class="lightbox__btn lightbox__close" id="lb-close" aria-label="关闭">✕</button>
+    <button class="lightbox__btn lightbox__prev" id="lb-prev" aria-label="上一张">←</button>
+    <img class="lightbox__img" id="lb-img" alt="" />
+    <button class="lightbox__btn lightbox__next" id="lb-next" aria-label="下一张">→</button>
+    <p class="lightbox__caption" id="lb-caption"></p>
+  </div>
+
+  <!-- 顺序很重要：云层 API → 配置 → 交互 -->
+  <script src="scripts/api.js"></script>
+  <script src="scripts/config.js"></script>
+  <script src="scripts/main.js"></script>
+</body>
+</html>
