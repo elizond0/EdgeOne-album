@@ -115,7 +115,8 @@
   function renderHomeCfg() {
     const h = (db.meta && db.meta.home) || {};
     $("#f-h-tl").value = h.timelineCount || 5;
-    $("#f-h-pr").value = h.photoRows || 2;
+    $("#f-h-pr").value = h.photoRows || 3;
+    if ($("#f-h-pmax")) $("#f-h-pmax").value = h.photoRowsMax || Math.max(3, (h.photoRows || 3) + 3);
     $("#f-h-qr").value = h.quoteRows || 1;
     $("#f-h-wc").value = h.wishCount || 8;
     $("#f-h-videos").value = h.showVideos || "auto";
@@ -181,9 +182,12 @@
     db.meta.anniversary = $("#f-anniversary").value;
     db.meta.couple = { a: $("#f-couple-a").value.trim(), b: $("#f-couple-b").value.trim() };
     db.meta.hero = $("#f-hero").value.trim();
+    const firstRows = Math.max(1, +$("#f-h-pr").value || 3);
+    const maxEl = $("#f-h-pmax");
     db.meta.home = {
       timelineCount: Math.max(1, +$("#f-h-tl").value || 5),
-      photoRows: Math.max(1, +$("#f-h-pr").value || 2),
+      photoRows: firstRows,
+      photoRowsMax: Math.max(firstRows, (maxEl && +maxEl.value) || firstRows + 3),
       quoteRows: Math.max(1, +$("#f-h-qr").value || 1),
       wishCount: Math.max(2, +$("#f-h-wc").value || 8),
       showVideos: $("#f-h-videos").value,
@@ -409,9 +413,11 @@
       db.meta.couple = { a: $("#f-couple-a").value.trim(), b: $("#f-couple-b").value.trim() };
     if ($("#f-hero")) db.meta.hero = $("#f-hero").value.trim();
     if ($("#f-h-tl")) {
+      const first = num("#f-h-pr", 3, 1, 6);
       db.meta.home = {
         timelineCount: num("#f-h-tl", 5, 1, 20),
-        photoRows: num("#f-h-pr", 2, 1, 6),
+        photoRows: first,
+        photoRowsMax: Math.max(first, num("#f-h-pmax", first + 3, 1, 12)),
         quoteRows: num("#f-h-qr", 1, 1, 6),
         wishCount: num("#f-h-wc", 8, 2, 30),
         showVideos: $("#f-h-videos") ? $("#f-h-videos").value : "auto",
@@ -433,7 +439,11 @@
     const out = JSON.parse(JSON.stringify(db));
     // 内存里的 src 已被 Site.attachBase() 拼成完整 URL。导出时必须还原成相对路径，
     // 否则隧道地址会被重新写死进 content.json，下次换地址又得重建。
-    (out.photos || []).forEach((p) => { if (p.file) p.src = p.file; });
+    // thumb 是运行时按 base 拼出来的派生字段，不属于数据，导出前删掉。
+    (out.photos || []).forEach((p) => {
+      if (p.file) p.src = p.file;
+      delete p.thumb;
+    });
     (out.videos || []).forEach((v) => { if (v.file) v.src = v.file; });
     out.base = "";
     out.version = 1;

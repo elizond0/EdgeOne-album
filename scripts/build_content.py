@@ -132,6 +132,9 @@ def main():
         photos.append({
             "file": x["f"],
             "src": x["f"],          # 相对路径；运行时由 site.js 拼上 base.json 的地址
+            # NAS 清单里的 t = 网格用缩略图（img/t/xxx.jpg），空串表示还没生成，
+            # 前端会退回原图。这里原样透传，别自己拼。
+            "s": x.get("t") or "",
             "title": (m or {}).get("title") or "",
             "desc": (m or {}).get("desc") or "",
             "date": x.get("d") or (m or {}).get("date") or "",

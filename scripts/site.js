@@ -61,11 +61,19 @@
   };
   // 给任意 <img> 挂兜底：真加载失败才换占位图。不加 once——灯箱会复用同一个 <img>，
   // 只挂一次的监听在切换第二张图后就失效了。
+  // data-fallback 是「退路」：缩略图 404 时先试原图，原图也挂了才上占位图。
+  // 这样即使缩略图还没生成/被清掉了，页面也只是慢一点，不会整片占位。
   Site.guardImg = function (img) {
     if (!img || img.dataset.guarded) return;
     img.dataset.guarded = "1";
     img.addEventListener("error", () => {
       if (img.src && img.src.indexOf(Site.PLACEHOLDER) !== -1) return; // 占位图本身也挂了就别循环
+      const fb = img.dataset.fallback;
+      if (fb && !img.dataset.fellback) {
+        img.dataset.fellback = "1";
+        img.src = fb;
+        return;
+      }
       img.src = Site.PLACEHOLDER;
       img.classList.add("is-offline");
     });
@@ -74,9 +82,48 @@
   Site.attachBase = function () {
     const db = Site.db;
     if (!db) return;
-    (db.photos || []).forEach((p) => (p.src = Site.media(p.file || p.src)));
+    (db.photos || []).forEach((p) => {
+      p.src = Site.media(p.file || p.src);
+      // 网格用缩略图（NAS 上由 mkthumb.py 生成，原图 2 MB → 缩略图 60 KB 量级）。
+      // 缩略图还没生成时 thumb 为空，退回原图，页面不会因为少跑一次脚本就坏掉。
+      p.thumb = p.s ? Site.media(p.s) : "";
+    });
     (db.videos || []).forEach((v) => (v.src = Site.media(v.file || v.src)));
     db.base = Site.base;
+  };
+
+  /* ---------- 图片并发闸门 ----------
+     NAS 走隧道出去，单张实测 90~450 KB/s 之间跳。一次进视口十几张时如果全放开，
+     带宽被摊薄，观感是「整片都在转圈、一张都不出来」。这里限制同时最多 4 张在途。 */
+  const IMG_LIMIT = 4;
+  let imgActive = 0;
+  const imgQueue = [];
+
+  function imgPump() {
+    while (imgActive < IMG_LIMIT && imgQueue.length) {
+      const job = imgQueue.shift();
+      imgActive++;
+      job();
+    }
+  }
+
+  Site.loadImg = function (img, url) {
+    if (!img || !url) return;
+    imgQueue.push(function () {
+      let done = false;
+      const finish = function () {
+        if (done) return;           // load / error / 超时 三者只认第一个
+        done = true;
+        imgActive = Math.max(0, imgActive - 1);
+        imgPump();
+      };
+      img.addEventListener("load", finish, { once: true });
+      img.addEventListener("error", finish, { once: true });
+      // 请求被浏览器丢弃（组件已卸载、网络挂起）时不会有 load/error，靠超时解锁队列
+      setTimeout(finish, 45000);
+      img.src = url;
+    });
+    imgPump();
   };
 
   /* ---------- 文案：meta.texts 优先 ---------- */
@@ -127,10 +174,15 @@
     node.className = "wall__item reveal";
     node.setAttribute("aria-label", "查看照片：" + (p.title || p.file));
     const ar = p.ar || 0.75;
+    // 网格位置放缩略图；灯箱另外用 p.src 原图（见 lightbox.fill）
+    const gridSrc = Site.imgSrc(p.thumb || p.src);
+    const fallback = p.thumb && p.src ? Site.imgSrc(p.src) : "";
     node.innerHTML =
       '<div class="polaroid">' +
       '<span class="tape" aria-hidden="true"></span>' +
-      `<img class="polaroid__img" alt="${esc(p.title)}" data-src="${esc(Site.imgSrc(p.src))}" style="aspect-ratio:${ar}" />` +
+      `<img class="polaroid__img" alt="${esc(p.title)}" data-src="${esc(gridSrc)}"` +
+      (fallback ? ` data-fallback="${esc(fallback)}"` : "") +
+      ` style="aspect-ratio:${ar}" />` +
       '<p class="polaroid__caption">' + esc(p.desc || p.title || "我们的日常") +
       (p.date
         ? '<span class="polaroid__date">' + esc(String(p.date).replace(/-/g, ".")) + " · " + esc(Site.placeLabel(p)) + "</span>"
@@ -147,17 +199,78 @@
             const im = en.target.querySelector("img[data-src]");
             if (im) {
               Site.guardImg(im);
-              im.src = im.dataset.src;
+              Site.loadImg(im, im.dataset.src);
               im.removeAttribute("data-src");
             }
             wallIO.unobserve(en.target);
           }),
-        { rootMargin: "600px 0px" }
+        { rootMargin: "400px 0px" }
       );
     }
     wallIO.observe(node);
     Site.reveal(node, (i % 8) * 45);
     return node;
+  };
+
+  /* ---------- 首页照片：首屏 N 排 + 滚到就补下一批 ----------
+     只铺 3 排不是省 DOM，是为了压住并发：隧道带宽有限，一次铺 24 张会让每张都变慢。
+     more 是 grid 后面的占位块，进入视口就把下一批挪进来，直到 maxRows 行封顶。 */
+  Site.renderPhotosPaged = function (grid, more, all, opt) {
+    if (!grid) return;
+    opt = opt || {};
+    const perRow = Math.max(1, opt.perRow || 4);
+    const firstRows = Math.max(1, opt.firstRows || 3);
+    const maxRows = Math.max(firstRows, opt.maxRows || firstRows);
+    const step = Math.max(1, opt.stepRows || 3) * perRow;
+    const cap = Math.min(all.length, maxRows * perRow);
+    let shown = Math.min(cap, firstRows * perRow);
+
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < shown; i++) frag.appendChild(Site.photoCard(all[i], i, all));
+    grid.appendChild(frag);
+
+    if (!more) return;
+    const btn = more.querySelector("[data-more]");
+    const tip = more.querySelector("[data-left]");
+
+    function sync() {
+      const left = Math.min(cap, all.length) - shown;
+      if (tip) tip.textContent = left > 0 ? "还有 " + left + " 张" : "";
+      more.hidden = left <= 0;
+      if (btn) btn.hidden = left <= 0;
+    }
+
+    function grow() {
+      if (shown >= cap) return false;
+      const end = Math.min(cap, shown + step);
+      const f = document.createDocumentFragment();
+      for (let i = shown; i < end; i++) f.appendChild(Site.photoCard(all[i], i, all));
+      grid.appendChild(f);
+      shown = end;
+      sync();
+      return shown < cap;
+    }
+
+    // 观察器只在「进入/离开视口」时回调；补完一批后 more 只是往下挪了位置，
+    // 状态没变就不会再触发，所以补完要自己再看一次它还在不在视口附近。
+    function checkNear() {
+      if (more.hidden) return;
+      const near = more.getBoundingClientRect().top < window.innerHeight + 300;
+      if (!near) return;
+      if (grow()) requestAnimationFrame(checkNear);
+    }
+
+    sync();
+    if (btn) btn.addEventListener("click", function () { grow(); checkNear(); });
+    if (!("IntersectionObserver" in window)) {
+      more.hidden = true;
+      return;
+    }
+    const io = new IntersectionObserver(
+      (ens) => ens.forEach((en) => { if (en.isIntersecting) checkNear(); }),
+      { rootMargin: "300px 0px" }
+    );
+    io.observe(more);
   };
 
   /* ---------- 入场动画（单向，不来回触发） ---------- */
@@ -255,8 +368,25 @@
     if (!lb || !p) return;
     const lbImg = lb.querySelector(".lightbox__img");
     Site.guardImg(lbImg);
-    lbImg.src = Site.imgSrc(p.src);
-    lb.querySelector(".lightbox__img").alt = p.title || "";
+    const want = Site.imgSrc(p.src);
+    const thumb = p.thumb || "";
+    lbImg.alt = p.title || "";
+
+    // 原图 2 MB 上下、隧道上要两三秒，直接换来是一片白。
+    // 先把网格里的缩略图顶上去（它基本已经缓存过），原图在后台 quiet 地加载，好了再换。
+    if (thumb && want && thumb !== want) {
+      lbImg.setAttribute("data-want", want);
+      lbImg.src = thumb;
+      const pre = new Image();
+      pre.onload = function () {
+        if (lbImg.getAttribute("data-want") === want) lbImg.src = want;
+      };
+      pre.src = want;
+    } else {
+      lbImg.removeAttribute("data-want");
+      lbImg.src = want;
+    }
+
     const place = Site.placeLabel(p);
     lb.querySelector(".lightbox__caption").textContent =
       (p.title && p.title !== place ? p.title + " · " : "") + place +
@@ -436,9 +566,11 @@
   Site.homeCfg = function () {
     const h = (Site.db && Site.db.meta && Site.db.meta.home) || {};
     const ALL = ["timeline", "photos", "quotes", "wishes", "videos"];
+    const rows = Math.max(1, +h.photoRows || 3);
     return {
       timelineCount: Math.max(1, +h.timelineCount || 5),
-      photoRows: Math.max(1, +h.photoRows || 2),
+      photoRows: rows,                                              // 首屏先铺几排
+      photoRowsMax: Math.max(rows, +h.photoRowsMax || rows + 3),     // 滚到底最多铺到几排
       quoteRows: Math.max(1, +h.quoteRows || 1),
       wishCount: Math.max(2, +h.wishCount || 8),
       showVideos: h.showVideos || "auto", // auto | show | hide
@@ -470,6 +602,33 @@
     setTimeout(() => secs.forEach((s) => s.classList.add("in")), 6000);
   };
 
+  /* ---------- 字体就绪：可观测，且带硬超时 ----------
+     霞鹜文楷切成 194 个子集，浏览器按 unicode-range 只下用到的那几个，
+     正常情况下二十来个请求、一两百毫秒就完事。但在 CDN 冷启动、隧道限速、
+     或者某些无头浏览器里，document.fonts.status 会长时间停在 loading，
+     任何 await document.fonts.ready 的脚本（截图、性能采集）就会永远挂着——
+     看起来像「页面卡死」，其实内容早渲染完了。
+     这里给一个 3 秒上限的版本，并往 <html> 上打 fonts-ready，
+     自动化要等字体就绪就等这个，别直接等 document.fonts.ready。 */
+  Site.watchFonts = function () {
+    const started = Date.now();
+    const done = function (how) {
+      document.documentElement.classList.add("fonts-ready");
+      document.documentElement.dataset.fonts = how;
+      Site.fontsMs = Date.now() - started;
+      return Site.fontsMs;
+    };
+    if (!document.fonts || !document.fonts.ready) return done("无 FontFace API，用系统字体");
+    let settled = false;
+    const settle = function (how) {
+      if (settled) return;
+      settled = true;
+      done(how);
+    };
+    document.fonts.ready.then(function () { settle("loaded"); });
+    setTimeout(function () { settle("timeout"); }, 3000);
+    return null;
+  };
   /* ---------- 相恋天数 ---------- */
   Site.renderDays = function () {
     const ann = (Site.db && Site.db.meta && Site.db.meta.anniversary) || "";
@@ -483,6 +642,7 @@
 
   /* ---------- 结语：内容就绪事件 ---------- */
   Site.boot = async function () {
+    Site.watchFonts();          // 和内容加载并行，不等
     await Site.load();
     Site.applyTexts();
     Site.renderDays();

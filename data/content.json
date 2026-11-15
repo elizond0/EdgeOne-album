@@ -39,7 +39,7 @@
   },
   "home": {
    "timelineCount": 5,
-   "photoRows": 2,
+   "photoRows": 3,
    "quoteRows": 1,
    "wishCount": 8,
    "showVideos": "auto",
@@ -49,7 +49,8 @@
     "quotes",
     "wishes",
     "videos"
-   ]
+   ],
+   "photoRowsMax": 6
   }
  },
  "events": [

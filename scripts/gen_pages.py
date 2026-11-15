@@ -38,6 +38,8 @@ TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
   <title>{title} · 我们的故事</title>
+  <link rel="stylesheet" href="assets/fonts/wenkai.css" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="assets/fonts/wenkai.css" /></noscript>
   <link rel="stylesheet" href="styles/tokens.css" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/components.css" />
@@ -63,16 +65,6 @@ TEMPLATE = """<!DOCTYPE html>
 
   <script src="scripts/site.js"></script>
   <script src="scripts/page-{page}.js"></script>
-  <script>
-    window.addEventListener("load", function () {{
-      setTimeout(function () {{
-        var l = document.createElement("link");
-        l.rel = "stylesheet";
-        l.href = "assets/fonts/wenkai.css";
-        document.head.appendChild(l);
-      }}, 800);
-    }});
-  </script>
   <script>Site.boot();</script>
 </body>
 </html>
