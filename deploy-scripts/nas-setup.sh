@@ -13,7 +13,7 @@
 #           NAS 共享文件夹 Photos / csy 里的原片一个都不动。
 #
 # 用法（在容器网页终端里）：
-#   wget -q -O /tmp/nas-setup.sh https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/nas-setup.sh \
+#   wget -q -O /tmp/nas-setup.sh "https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/nas-setup.sh?x=$(date +%s)" \
 #     && sh /tmp/nas-setup.sh > /srv/pub/wb_setup.log 2>&1 &
 #   然后浏览器打开 https://<隧道>/wb_setup.log 看进度
 #
@@ -39,7 +39,8 @@ say "OK python3 / ffmpeg / Pillow 都在"
 say "=== 1/6 部署 mkthumb.py / base-sync.sh / mkindex.py ==="
 mkdir -p "$P"
 for f in mkthumb.py base-sync.sh mkindex.py pub_vid.sh boot.sh; do
-  if wget -q -O "$P/$f" "$RAW/$f"; then
+  # 带时间戳绕开 raw.githubusercontent.com 的 CDN 缓存，确保拿到刚推上去的版本
+  if wget -q -O "$P/$f" "$RAW/$f?x=$(date +%s)"; then
     say "  下载 $f OK ($(wc -c < "$P/$f") bytes)"
   else
     say "  下载 $f 失败，改用本地已有版本"
@@ -83,8 +84,9 @@ for f in "$ORIG"/*.mp4; do
   if [ -f "$dst" ] && [ -f "$poster" ]; then say "  [$i] SKIP $n"; continue; fi
   say "  [$i] START $n ($(du -h "$f" | cut -f1))"
   if [ ! -f "$dst" ]; then
+    # force_divisible_by=2：H.264 要求宽高为偶数，等比缩放偶尔会算出奇数边长
     ffmpeg -y -v error -i "$f" \
-      -vf "scale=1280:1280:force_original_aspect_ratio=decrease,format=yuv420p" \
+      -vf "scale=1280:1280:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p" \
       -c:v libx264 -crf 23 -preset veryfast \
       -c:a aac -b:a 96k \
       -movflags +faststart -map_metadata -1 -map_chapters -1 \
@@ -107,10 +109,14 @@ say "index.json 里带封面的条目：$(grep -c '"p": "video/poster/' "$OUT/in
 # ── 5. 启动域名自愈常驻进程 ───────────────────────────────────────────────
 say "=== 5/6 启动 base-sync 常驻（5 分钟一次）==="
 if [ -f "$P/.gh_token" ]; then
-  # 先停掉旧的，避免两个进程同时推
-  kill $(ps -o pid,args | grep '[b]ase-sync.sh --watch' | awk '{print $1}') 2>/dev/null || true
-  (sleep 2; sh "$P/base-sync.sh" --watch 300) >>"$P/base-sync.log" 2>&1 &
-  say "  已启动；boot.sh 里已有同样的挂载，容器重启后会自动恢复"
+  # 已有 watcher 就别再拉一个：两个进程同时推 base.json 会抢同一个 sha。
+  # 用 busybox 兼容的 `ps | grep`，不用 `ps -o pid,args`（Alpine 上不支持）。
+  if ps | grep -q '[b]ase-sync.sh --watch'; then
+    say "  已有 watcher 在跑，跳过重复启动"
+  else
+    (sleep 2; sh "$P/base-sync.sh" --watch 300) >>"$P/base-sync.log" 2>&1 &
+    say "  已启动；boot.sh 里已有同样的挂载，容器重启后会自动恢复"
+  fi
   sh "$P/base-sync.sh" >>"$P/base-sync.log" 2>&1
   say "  首轮同步结果见 $P/base-sync.log"
 else
