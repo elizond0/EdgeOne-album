@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" /><!-- 私密分享：禁止搜索引擎收录 -->
   <title>我们的故事 · 恋爱纪念册</title>
-  <!-- 中文手写感展示字霞鹜文楷（自托管，零外部请求，国内加载不卡） -->
-  <link href="assets/fonts/wenkai.css" rel="stylesheet" />
+  <!-- 中文手写感展示字霞鹜文楷（自托管，零外部请求，国内加载不卡）
+       ⚠ 用 media="print" 延迟应用：字体子集有上百个 woff2，若同步加载会把
+       DOMContentLoaded 拖到 20 秒以上，照片墙渲染直接卡死。加载完成后再切回 all。 -->
+  <link href="assets/fonts/wenkai.css" rel="stylesheet" media="print" onload="this.media='all'" />
   <link rel="stylesheet" href="styles/tokens.css" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/components.css" />
