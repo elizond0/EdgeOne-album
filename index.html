@@ -158,5 +158,24 @@
       }, 800);
     });
   </script>
+
+  <!-- 兜底：.reveal 依赖 IntersectionObserver 才会从透明变可见。
+       某些环境（无头浏览器、部分内嵌 WebView）里该观察器不回调，
+       整页照片会一直停在 opacity:0 看起来像空白。这里按视口位置兜底补 .in。 -->
+  <script>
+    (function () {
+      function tick() {
+        var h = window.innerHeight;
+        var pending = document.querySelectorAll(".reveal:not(.in)");
+        if (!pending.length) return;
+        for (var i = 0; i < pending.length; i++) {
+          var r = pending[i].getBoundingClientRect();
+          if (r.top < h + 400 && r.bottom > -400) pending[i].classList.add("in");
+        }
+      }
+      setInterval(tick, 1000);
+      window.addEventListener("load", function () { setTimeout(tick, 200); });
+    })();
+  </script>
 </body>
 </html>
