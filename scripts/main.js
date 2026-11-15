@@ -386,6 +386,14 @@
   /* ---------- 启动 ---------- */
   async function renderAll() {
     let cloudMedia = [];
+    // 优先从 NAS 隧道读取媒体清单（图片/视频已迁出 Blob 存储）
+    if (window.NAS && window.NAS.load) {
+      await window.NAS.load();
+      if (window.NAS.ready) {
+        window.PHOTOS = window.NAS.photos;
+        if (window.NAS.videos.length) window.VIDEOS = window.NAS.videos;
+      }
+    }
     const localMedia = await dbAll();
     if (CS.state.cloudReady) {
       try { cloudMedia = await CS.listMedia(); }
