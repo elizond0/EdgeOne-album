@@ -91,10 +91,12 @@ sh scripts/release.sh
 
 ## 四、日常更新：改文案 / 调首页
 
-全部在 `admin.html` 里做，**没有后端，所以「保存」= 导出文件**：
+全部在 `admin.html` 里做，**没有后端，所以「保存」= 导出文件**。
+前台已移除所有后台入口，需要手动输入 `https://elizond0.github.io/album/admin.html`：
 
-1. 打开 `admin.html`，输管理口令 —— **默认是 `our-story-2025`**，
-   进去后在「基本信息 → 修改口令」可改（只改本机浏览器，不同步其他设备）
+1. 打开后台，输管理口令。默认口令的哈希写在 `scripts/admin.js` 的 `DEFAULT_HASH`
+   （公开仓库任何人可读，**进入后请立即在「基本信息 → 修改口令」改掉**，
+   改动只存在本机浏览器，不同步其他设备）
 2. 改完点右上角 **「保存并导出 content.json」**
 3. 把下载的文件覆盖到 `data/content.json`，刷新页面即生效
 
@@ -237,7 +239,9 @@ sh /var/lib/tailscale/setup-nas.sh --full   # 全量重建（改过 --edge 参�
 
 `admin.html` 的口令做 SHA-256 哈希比对，默认值写在 `scripts/admin.js` 的 `DEFAULT_HASH`。
 它挡的是「随手翻到链接的人」，不是真正的账号系统 —— 哈希在公开仓库里，懂技术的人可以暴破。
-真正的保护仍然是「链接不公开 + `noindex`」。
+前台页面已无任何跳转入口，`admin.html` 自身带 `noindex, nofollow`；真正的保护只有
+「知道完整 URL 的人才找得到」，**不要把它当成访问控制**。公开仓库里的
+`data/content.json` 和 NAS 媒体直链本来就能直接取到，纯静态站做不到服务端鉴权。
 
 忘了改过的口令：清掉本站的浏览器存储（localStorage），会回到默认口令。
 

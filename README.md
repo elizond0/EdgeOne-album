@@ -16,19 +16,21 @@
 | `quotes.html` | 随手记 |
 | `wishes.html` | 心愿清单（待解锁 / 已解锁两栏） |
 | `videos.html` | 影像 |
-| `admin.html` | 管理后台（本机口令解锁，只做编辑 + 导出，不写服务器） |
+| `admin.html` | 管理后台（独立页面，前台无入口；本机口令解锁，只做编辑 + 导出，不写服务器） |
 
-前端页面**没有任何上传入口**，纯展示；所有编辑都收在 `admin.html` 里。
+前端页面**没有任何上传入口**，纯展示；所有编辑都收在 `admin.html` 里，
+且必须手动输入完整 URL 访问，首页与子页都不放跳转链接。
 
 ## 改内容的正确姿势
 
-1. 打开 `admin.html`，输本机管理口令
+1. 直接访问 `https://elizond0.github.io/album/admin.html`，输本机管理口令
 2. 改完点 **「保存并导出 content.json」**
 3. 覆盖仓库里的 `data/content.json`，刷新页面即生效
 
-加照片不走后台：把文件放进 NAS 的照片目录，在 NAS 上跑一次 `deploy-scripts/setup-nas.sh`
-（自动生成缩略图 + 重建清单 + 核对地址），再按上面第 3 步覆盖。
-详细流程和注意事项见 **`DEPLOY.md`**。
+加照片不走后台：把文件放进 NAS 的照片目录，在 `album-node` 容器里跑一次
+`deploy-scripts/nas-setup.sh`（统一文件名小写 + 生成缩略图 + 转码视频 + 抽封面
++ 重建 `index.json` + 拉起域名自愈常驻），再用 `scripts/build_content.py` 重建内容清单。
+详细流程和注意事项见 **`docs/相册发布处理-规范.md`**。
 
 ## 本地预览
 
