@@ -128,6 +128,7 @@
   <script src="scripts/site.js"></script>
   <script>
     document.addEventListener("site:ready", function (e) {
+      if (!e.detail) return;   // 内容没拉到时只显示横幅，别在这里二次报错
       const db = e.detail || {};
       const cfg = Site.homeCfg();
       const main = document.querySelector("main");

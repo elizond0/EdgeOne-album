@@ -20,11 +20,28 @@
   // content.json 里存的是相对路径（img/xxx.jpg）。真实的 NAS 地址在 base.json，
   // 由 NAS 开机时自动改写。这样隧道地址一换，只改 base.json 就行，
   // 不用重新构建、不用重新推 Git。
+
+  // GitHub Pages 在国内容易抽风：偶尔一次 404/超时，页面就变成「全是默认文案、
+  // 一张照片都没有」，而用户看到的只是「网站好像坏了」。这里失败自动重试两次，
+  // 三次都拿不到才算真的失败，再由 showLoadError() 明说。
+  async function getJSON(url, name, tries) {
+    let last;
+    for (let i = 0; i < (tries || 3); i++) {
+      try {
+        const r = await fetch(url + (url.indexOf("?") < 0 ? "?_=" : "&_=") + Date.now(), { cache: "no-store" });
+        if (!r.ok) throw new Error(name + " HTTP " + r.status);
+        return await r.json();
+      } catch (e) {
+        last = e;
+        if (i < (tries || 3) - 1) await new Promise((ok) => setTimeout(ok, 400 * (i + 1)));
+      }
+    }
+    throw last;
+  }
+
   Site.load = async function () {
     try {
-      const r = await fetch("data/content.json?_=" + Date.now(), { cache: "no-store" });
-      if (!r.ok) throw new Error("content.json HTTP " + r.status);
-      Site.db = await r.json();
+      Site.db = await getJSON("data/content.json", "content.json", 3);
       Site.ready = true;
     } catch (e) {
       Site.error = String((e && e.message) || e);
@@ -33,9 +50,8 @@
     }
     // 取 NAS 地址（失败不阻塞文字内容，只是图片出不来）
     try {
-      const br = await fetch("base.json?_=" + Date.now(), { cache: "no-store" });
-      if (!br.ok) throw new Error("base.json HTTP " + br.status);
-      Site.base = String((await br.json()).base || "").replace(/\/+$/, "");
+      const bj = await getJSON("base.json", "base.json", 2);
+      Site.base = String((bj && bj.base) || "").replace(/\/+$/, "");
       if (!Site.base) throw new Error("base.json 里没有 base 字段");
     } catch (e) {
       Site.mediaError = String((e && e.message) || e);
@@ -44,6 +60,19 @@
     }
     Site.attachBase();
     return Site;
+  };
+
+  // 内容彻底没拉到时的横幅。别让人对着默认文案猜「是不是我记错网址了」。
+  Site.showLoadError = function () {
+    if (document.getElementById("load-error")) return;
+    const bar = document.createElement("div");
+    bar.id = "load-error";
+    bar.className = "load-error";
+    bar.innerHTML =
+      '<span>内容没加载出来（' + esc(Site.error || "网络不通") + "）</span>" +
+      '<button type="button" class="load-error__btn">重新加载</button>';
+    bar.querySelector("button").addEventListener("click", () => location.reload());
+    document.body.insertBefore(bar, document.body.firstChild);
   };
 
   // 把相对路径拼成可用的完整地址；base 缺失时留空，让上层决定怎么提示
@@ -647,6 +676,7 @@
     Site.applyTexts();
     Site.renderDays();
     Site.revealAll();
+    if (!Site.db) Site.showLoadError();
     document.dispatchEvent(new CustomEvent("site:ready", { detail: Site.db }));
   };
 })();

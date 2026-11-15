@@ -751,6 +751,20 @@ html { scroll-behavior: smooth; }
 .preview-more__btn:hover { color: var(--color-accent); border-color: var(--color-accent); }
 .preview-more .more-link { margin-top: 0; }
 
+/* 内容加载失败横幅：默认文案 + 破图会让人以为「网站坏了」，说清楚再给个重试 */
+.load-error {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 900;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-4);
+  flex-wrap: wrap; padding: 10px var(--space-4);
+  background: #3b2f26; color: #f3ece2;
+  font-size: var(--fs-small); line-height: 1.5;
+}
+.load-error__btn {
+  font: inherit; color: #3b2f26; background: #f3ece2; border: 0;
+  border-radius: 999px; padding: 4px 14px; cursor: pointer;
+}
+.load-error__btn:hover { background: #fff; }
+
 /* 照片墙工具栏 */
 .wall-toolbar { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-3); flex-wrap: wrap; }
 .wall-toolbar select {
