@@ -13,7 +13,8 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
     );
 
-  const Site = { esc, db: null, ready: false, error: "", base: "", mediaError: "" };
+  // thumbDead：缩略图在 NAS 上还不存在时的全局开关，见 guardImg
+  const Site = { esc, db: null, ready: false, error: "", base: "", mediaError: "", thumbDead: false };
   window.Site = Site;
 
   /* ---------- 内容加载 ---------- */
@@ -106,6 +107,9 @@
       const fb = img.dataset.fallback;
       if (fb && !img.dataset.fellback) {
         img.dataset.fellback = "1";
+        // 缩略图 404 → 说明 NAS 上还没跑 mkthumb.py。记一笔，后面就别再试了，
+        // 否则照片墙几百张会挨个 404 一遍。
+        if (img.src && img.src.indexOf("/t/") !== -1) Site.thumbDead = true;
         img.src = fb;
         return;
       }
@@ -114,14 +118,25 @@
     });
   };
 
+  // 缩略图路径规则固定：img/xxx.jpg → img/t/xxx.jpg。
+  // content.json 里没写 s 也照样能推出来——这样 NAS 上跑完 mkthumb.py 刷新即生效，
+  // 不必先回头重建一次 content.json。推到不存在的缩略图也只是多一次 404，
+  // data-fallback 会退回原图。
+  function thumbOf(file) {
+    const f = String(file || "");
+    if (!f || /^https?:\/\//i.test(f)) return "";
+    if (/\/t\//.test(f)) return "";                 // 本身已经是缩略图
+    const i = f.lastIndexOf("/");
+    return i < 0 ? "t/" + f : f.slice(0, i + 1) + "t/" + f.slice(i + 1);
+  }
+
   Site.attachBase = function () {
     const db = Site.db;
     if (!db) return;
     (db.photos || []).forEach((p) => {
       p.src = Site.media(p.file || p.src);
       // 网格用缩略图（NAS 上由 mkthumb.py 生成，原图 2 MB → 缩略图 60 KB 量级）。
-      // 缩略图还没生成时 thumb 为空，退回原图，页面不会因为少跑一次脚本就坏掉。
-      p.thumb = p.s ? Site.media(p.s) : "";
+      p.thumb = Site.media(p.s || thumbOf(p.file));
     });
     (db.videos || []).forEach((v) => (v.src = Site.media(v.file || v.src)));
     db.base = Site.base;
@@ -210,8 +225,9 @@
     node.setAttribute("aria-label", "查看照片：" + (p.title || p.file));
     const ar = p.ar || 0.75;
     // 网格位置放缩略图；灯箱另外用 p.src 原图（见 lightbox.fill）
-    const gridSrc = Site.imgSrc(p.thumb || p.src);
-    const fallback = p.thumb && p.src ? Site.imgSrc(p.src) : "";
+    const thumb = Site.thumbDead ? "" : p.thumb;
+    const gridSrc = Site.imgSrc(thumb || p.src);
+    const fallback = thumb && p.src ? Site.imgSrc(p.src) : "";
     node.innerHTML =
       '<div class="polaroid">' +
       '<span class="tape" aria-hidden="true"></span>' +
@@ -404,7 +420,7 @@
     const lbImg = lb.querySelector(".lightbox__img");
     Site.guardImg(lbImg);
     const want = Site.imgSrc(p.src);
-    const thumb = p.thumb || "";
+    const thumb = Site.thumbDead ? "" : p.thumb || "";
     lbImg.alt = p.title || "";
 
     // 原图 2 MB 上下、隧道上要两三秒，直接换来是一片白。
