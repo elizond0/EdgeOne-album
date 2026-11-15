@@ -117,6 +117,7 @@ def main():
             videos.append({
                 "file": x["f"],
                 "src": x["f"],          # 相对路径；运行时由 site.js 拼上 base.json 的地址
+                "poster": x.get("p") or "",   # NAS 抽的首帧封面，空串时前端回落到本地 SVG
                 "title": (m.get("title") if m else "") or Path(x["f"]).stem,
                 "note": (m.get("desc") if m else "") or "",
                 # NAS 清单目前没给视频宽高/日期（都是 0 / 空串），
@@ -134,6 +135,8 @@ def main():
             "src": x["f"],          # 相对路径；运行时由 site.js 拼上 base.json 的地址
             # NAS 清单里的 t = 网格用缩略图（img/t/xxx.jpg），空串表示还没生成，
             # 前端会退回原图。这里原样透传，别自己拼。
+            # thumb 是前端实际读的字段名；s 保留给早期数据兼容。
+            "thumb": x.get("t") or "",
             "s": x.get("t") or "",
             "title": (m or {}).get("title") or "",
             "desc": (m or {}).get("desc") or "",
@@ -177,7 +180,8 @@ def main():
         "meta": {
             "anniversary": meta.get("anniversary", ""),
             "couple": meta.get("couple", {}),
-            "hero": meta.get("hero", ""),
+            # 文件名统一小写；NAS 上照片早已全小写，seed 里残留的大写会匹配不上
+            "hero": str(meta.get("hero", "") or "").lower(),
             "texts": texts,
             "home": home,
             "pages": pages,

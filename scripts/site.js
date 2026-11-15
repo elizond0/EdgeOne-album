@@ -92,6 +92,8 @@
 
   // NAS 没开机 / 隧道断了 / 单张图 404 时统一落到这张手账风占位图
   Site.PLACEHOLDER = "assets/img/placeholder-offline.svg";
+  // 视频默认封面：本地 SVG，避免 preload 把整段 mp4 拉下来
+  Site.VIDEO_POSTER = "assets/img/video-poster.svg";
   Site.imgSrc = function (src) {
     return src || Site.PLACEHOLDER;
   };
@@ -225,7 +227,8 @@
     node.setAttribute("aria-label", "查看照片：" + (p.title || p.file));
     const ar = p.ar || 0.75;
     // 网格位置放缩略图；灯箱另外用 p.src 原图（见 lightbox.fill）
-    const thumb = Site.thumbDead ? "" : p.thumb;
+    // 兼容两种字段名：新版构建脚本写 thumb，早期 NAS 清单透传的是 s
+    const thumb = Site.thumbDead ? "" : (p.thumb || p.s || "");
     const gridSrc = Site.imgSrc(thumb || p.src);
     const fallback = thumb && p.src ? Site.imgSrc(p.src) : "";
     node.innerHTML =
@@ -420,7 +423,7 @@
     const lbImg = lb.querySelector(".lightbox__img");
     Site.guardImg(lbImg);
     const want = Site.imgSrc(p.src);
-    const thumb = Site.thumbDead ? "" : p.thumb || "";
+    const thumb = Site.thumbDead ? "" : (p.thumb || p.s || "");
     lbImg.alt = p.title || "";
 
     // 原图 2 MB 上下、隧道上要两三秒，直接换来是一片白。
@@ -586,8 +589,22 @@
       card.style.setProperty("--reveal-delay", (i % 3) * 100 + "ms");
       const vid = document.createElement("video");
       vid.controls = true;
-      vid.preload = "metadata";
+      // 关键：preload=metadata 在没有 poster 时，Chromium 会发 Range: bytes=0- 的开放式
+      // 请求，把整个 mp4 拖下来（实测首页 3 个视频 = 67MB）。改成 none，点播放才加载。
+      vid.preload = "none";
       vid.setAttribute("playsinline", "");
+      // poster 默认是本地 SVG（走 Pages，不依赖 NAS、零请求）。
+      // NAS 抽好首帧封面后，用 Image 预检通过才替换；404 就安静地保持 SVG。
+      // 不能用 video 的 error 事件判断 —— poster 加载失败不会触发它。
+      vid.poster = Site.VIDEO_POSTER;
+      if (v.poster) {
+        const url = Site.media(v.poster);
+        if (url) {
+          const probe = new Image();
+          probe.onload = () => { vid.poster = url; };
+          probe.src = url;
+        }
+      }
       // NAS 不可用时留空 src，由 CSS 的占位背景兜着，别让浏览器去请求一个必然失败的地址
       if (v.src) vid.src = v.src;
       else card.classList.add("is-offline");

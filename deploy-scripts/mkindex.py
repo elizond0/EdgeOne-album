@@ -79,8 +79,15 @@ if os.path.isdir(vd):
             continue
         p = os.path.join(vd, n)
         d, w, h = probe_video(p)
-        items.append({"f": "video/" + n, "d": d, "w": w, "h": h,
-                      "k": "video", "s": os.path.getsize(p)})
+        # 文件名统一小写（NAS 上的原片已按小写重命名，这里兜一层防回归）
+        name = n.lower()
+        # 首帧封面：由 pub_vid.sh 抽到 video/poster/<stem>.jpg，存在才带上。
+        # 前端拿不到时用本地 SVG 占位，绝不预加载整段 mp4。
+        poster = "video/poster/" + os.path.splitext(name)[0] + ".jpg"
+        items.append({"f": "video/" + name, "d": d, "w": w, "h": h,
+                      "k": "video", "s": os.path.getsize(p),
+                      "p": poster if os.path.exists(os.path.join(OUT, "video", "poster",
+                                                                 os.path.splitext(name)[0] + ".jpg")) else ""})
 
 items.sort(key=lambda x: (x["d"], x["f"]), reverse=True)
 doc = {

@@ -11,8 +11,10 @@
 #   而站点上没有任何线索说明是地址变了。常驻 5 分钟一次，最多 5 分钟自愈。
 P=${ALBUM_HOME:-/var/lib/tailscale}
 
-apk add --no-cache caddy curl python3 py3-pillow >/dev/null 2>&1
-mkdir -p /var/run/tailscale /etc/caddy /srv/pub /srv/photos
+# ffmpeg 一定要装上：视频转码和首帧封面都靠它。之前漏了这一项，
+# 容器起来后 python3 / ffmpeg 都不存在，缩略图和转码脚本自然跑不动。
+apk add --no-cache caddy curl python3 py3-pillow ffmpeg >/dev/null 2>&1
+mkdir -p /var/run/tailscale /etc/caddy /srv/pub /srv/photos /srv/pub/video/poster
 
 cp $P/Caddyfile /etc/caddy/Caddyfile
 caddy run --config /etc/caddy/Caddyfile >$P/caddy.log 2>&1 &

@@ -122,8 +122,8 @@
 
   <footer class="footer">
     <p><span data-text="footerNote">为了我们的纪念日，页面会一直更新下去</span> <span class="heart" aria-hidden="true">♥</span></p>
-    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
-    <p class="footer__stamp"><span data-stamp>2026.11.15 20:49</span></p>
+    <p class="form__hint"><span data-text="footerSub">私密分享页面</span></p>
+    <p class="footer__stamp"><span data-stamp>2026.11.15 22:01</span></p>
   </footer>
 
   <script src="scripts/site.js"></script>
@@ -137,7 +137,7 @@
       /* 首屏照片：用 meta.hero（文件名）去 NAS 清单里找 */
       const heroFile = (db.meta && db.meta.hero) || "";
       const heroPhoto =
-        db.photos.find((p) => p.file.split("/").pop() === heroFile) ||
+        db.photos.find((p) => p.file.split("/").pop().toLowerCase() === heroFile.toLowerCase()) ||
         db.photos.find((p) => p.featured) ||
         db.photos[0];
       const im = document.getElementById("hero-img");
