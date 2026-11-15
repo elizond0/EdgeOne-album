@@ -23,9 +23,33 @@ set -u
 P=/var/lib/tailscale
 OUT=/srv/pub
 RAW=https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts
+# GitHub Pages 发布的是同一个 main 分支，CDN 通常比 raw 稳，作为备用源
+PAGES_RAW=https://elizond0.github.io/album/deploy-scripts
 LOG=/srv/pub/wb_setup.log
 
 say() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
+# 下载单个脚本：raw 优先、Pages 兜底，各试 2 次；一律先写 .tmp 再 mv。
+# busybox wget -O 失败会留下 0 字节文件，那样会把本地已有好版本毁掉，必须避开。
+fetch() {
+  f=$1
+  for src in "$RAW" "$PAGES_RAW"; do
+    for try in 1 2; do
+      if wget -q -T 20 -O "$P/$f.tmp" "$src/$f?x=$(date +%s)$try" 2>/dev/null && [ -s "$P/$f.tmp" ]; then
+        mv "$P/$f.tmp" "$P/$f"
+        say "  下载 $f OK ($(wc -c < "$P/$f") bytes)"
+        return 0
+      fi
+    done
+  done
+  rm -f "$P/$f.tmp"
+  if [ -s "$P/$f" ]; then
+    say "  下载 $f 失败，沿用本地已有版本"
+    return 0
+  fi
+  say "  下载 $f 失败且本地没有，无法继续"
+  return 1
+}
 
 # ── 0. 前置 ────────────────────────────────────────────────────────────────
 say "=== 0/6 检查依赖 ==="
@@ -39,14 +63,14 @@ say "OK python3 / ffmpeg / Pillow 都在"
 say "=== 1/6 部署 mkthumb.py / base-sync.sh / mkindex.py ==="
 mkdir -p "$P"
 for f in mkthumb.py base-sync.sh mkindex.py pub_vid.sh boot.sh; do
-  # 带时间戳绕开 raw.githubusercontent.com 的 CDN 缓存，确保拿到刚推上去的版本
-  if wget -q -O "$P/$f" "$RAW/$f?x=$(date +%s)"; then
-    say "  下载 $f OK ($(wc -c < "$P/$f") bytes)"
-  else
-    say "  下载 $f 失败，改用本地已有版本"
-  fi
+  fetch "$f" || exit 1
 done
 chmod +x "$P/base-sync.sh" "$P/pub_vid.sh" 2>/dev/null || true
+# 版本校验：mkindex.py 必须带 t / p 字段，否则重建出来的 index.json
+# 还是没有缩略图和封面，前端只能继续拉 2048px 原图、视频继续没有 poster。
+if ! grep -q '"p": ' "$P/mkindex.py" || ! grep -q '"t": ' "$P/mkindex.py"; then
+  say "⚠ mkindex.py 版本过旧（缺 t/p 字段），请检查下载源"
+fi
 
 # ── 1b. 原图目录文件名统一小写 ────────────────────────────────────────────
 # /srv/pub/img 的压缩图早已全小写，但 NAS 共享文件夹 Photos（→ /srv/photos）
