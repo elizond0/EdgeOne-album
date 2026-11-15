@@ -461,7 +461,7 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     dirty = false;
     $("#dirty-tip").hidden = true;
-    toast("已导出 content.json，覆盖到 NAS 对应目录即可");
+    toast("已导出 content.json，覆盖站点 data/content.json 并推送；没生效就按 Ctrl/Cmd+Shift+R 强刷");
   });
 
   window.addEventListener("beforeunload", (e) => {

@@ -24,11 +24,17 @@
   // GitHub Pages 在国内容易抽风：偶尔一次 404/超时，页面就变成「全是默认文案、
   // 一张照片都没有」，而用户看到的只是「网站好像坏了」。这里失败自动重试两次，
   // 三次都拿不到才算真的失败，再由 showLoadError() 明说。
-  async function getJSON(url, name, tries) {
+  //
+  // bust=true 才加时间戳。为什么不一律加：Pages 给这些文件的 max-age 是 600，
+  // 每次换 query 等于每次都强制回源，实测回源 2~30 秒，而命中缓存是几十毫秒。
+  // content.json 体量不小且改动少，交给缓存；base.json 只有 110 字节，
+  // 但隧道地址一变就必须尽快生效，所以它 bust。
+  async function getJSON(url, name, tries, bust) {
     let last;
     for (let i = 0; i < (tries || 3); i++) {
       try {
-        const r = await fetch(url + (url.indexOf("?") < 0 ? "?_=" : "&_=") + Date.now(), { cache: "no-store" });
+        const u = bust ? url + "?_=" + Date.now() : url;
+        const r = await fetch(u, { cache: bust ? "no-store" : "default" });
         if (!r.ok) throw new Error(name + " HTTP " + r.status);
         return await r.json();
       } catch (e) {
@@ -41,7 +47,7 @@
 
   Site.load = async function () {
     try {
-      Site.db = await getJSON("data/content.json", "content.json", 3);
+      Site.db = await getJSON("data/content.json", "content.json", 3, false);
       Site.ready = true;
     } catch (e) {
       Site.error = String((e && e.message) || e);
@@ -50,7 +56,7 @@
     }
     // 取 NAS 地址（失败不阻塞文字内容，只是图片出不来）
     try {
-      const bj = await getJSON("base.json", "base.json", 2);
+      const bj = await getJSON("base.json", "base.json", 2, true);
       Site.base = String((bj && bj.base) || "").replace(/\/+$/, "");
       if (!Site.base) throw new Error("base.json 里没有 base 字段");
     } catch (e) {
