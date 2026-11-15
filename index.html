@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" /><!-- 私密分享：禁止搜索引擎收录 -->
   <title>我们的故事 · 恋爱纪念册</title>
-  <!-- 中文手写感展示字霞鹜文楷（自托管，零外部请求，国内加载不卡）
-       ⚠ 用 media="print" 延迟应用：字体子集有上百个 woff2，若同步加载会把
-       DOMContentLoaded 拖到 20 秒以上，照片墙渲染直接卡死。加载完成后再切回 all。 -->
-  <link href="assets/fonts/wenkai.css" rel="stylesheet" media="print" onload="this.media='all'" />
+  <!-- 中文手写感展示字霞鹜文楷（自托管，零外部请求）
+       ⚠ 字体子集有上百个 woff2，同步引入会把页面解析拖到 20 秒以上，
+       照片墙直接渲染不出来。改为 load 之后再动态注入，字体晚到不影响内容。 -->
   <link rel="stylesheet" href="styles/tokens.css" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/components.css" />
@@ -147,5 +146,17 @@
   <script src="scripts/config.js"></script>
   <script src="scripts/nas.js"></script>
   <script src="scripts/main.js"></script>
+
+  <!-- 字体延后注入：等页面内容（照片墙）先渲染完，再不慌不忙加载手写体 -->
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = "assets/fonts/wenkai.css";
+        document.head.appendChild(l);
+      }, 800);
+    });
+  </script>
 </body>
 </html>
