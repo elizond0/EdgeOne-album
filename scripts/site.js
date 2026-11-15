@@ -533,7 +533,9 @@
 
       const h = document.createElement("h3");
       h.className = "wishbox__head";
-      h.innerHTML = esc(title) + "<small>" + list.length + "</small>";
+      // 徽章显示「实际显示的条数」，总数更多时补一个分母，免得看到 12 以为是 12 条都铺上了
+      const badge = arr.length < list.length ? arr.length + "/" + list.length : String(arr.length);
+      h.innerHTML = esc(title) + "<small>" + badge + "</small>";
       box.appendChild(h);
 
       if (!arr.length) {
