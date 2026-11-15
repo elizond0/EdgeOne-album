@@ -125,6 +125,21 @@
   filter: saturate(0.96);
   background: var(--color-bg-deep);
 }
+/* NAS 不可用：占位图本身已是纸色，去掉滤镜让它安静地待着 */
+.polaroid__img.is-offline { filter: none; }
+.polaroid__img.is-offline::after { content: none; }
+
+/* 视频缺失：卡片内给一句话，别留一块死黑 */
+.video-card.is-offline .video-card__frame::after {
+  content: "NAS 没开机，视频暂时看不了";
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #8d8778; font-size: var(--fs-small); letter-spacing: 0.06em;
+  background: repeating-linear-gradient(
+    -45deg, rgba(255,255,255,0.02) 0 8px, rgba(255,255,255,0.05) 8px 16px
+  );
+}
+.video-card.is-offline video { visibility: hidden; }
 .polaroid__caption {
   font-family: var(--font-display);
   color: var(--color-text);

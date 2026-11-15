@@ -273,7 +273,7 @@
     const pl = p.place || {};
     return `
       <div class="photo-row" data-i="${i}">
-        <img loading="lazy" src="${esc(p.src)}" alt="" />
+        <img loading="lazy" src="${esc(Site.imgSrc(p.src))}" alt="" />
         <div class="photo-row__grid">
           <label>描述<input data-p="title" value="${esc(p.title)}" /></label>
           <label>补充描述<textarea data-p="desc" rows="1">${esc(p.desc || "")}</textarea></label>
@@ -314,7 +314,7 @@
                 (p) =>
                   `<figure class="pg-thumb ${p.hidden ? "is-hidden" : ""} ${p.featured ? "is-featured" : ""}"
                      data-file="${esc(p.file)}" title="${esc(p.title || p.file)}">
-                     <img loading="lazy" src="${esc(p.src)}" alt="" /></figure>`
+                     <img loading="lazy" src="${esc(Site.imgSrc(p.src))}" alt="" /></figure>`
               )
               .join("")}
           </div>

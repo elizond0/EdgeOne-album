@@ -54,6 +54,23 @@
     return Site.base ? Site.base + "/" + f.replace(/^\/+/, "") : "";
   };
 
+  // NAS 没开机 / 隧道断了 / 单张图 404 时统一落到这张手账风占位图
+  Site.PLACEHOLDER = "assets/img/placeholder-offline.svg";
+  Site.imgSrc = function (src) {
+    return src || Site.PLACEHOLDER;
+  };
+  // 给任意 <img> 挂兜底：真加载失败才换占位图。不加 once——灯箱会复用同一个 <img>，
+  // 只挂一次的监听在切换第二张图后就失效了。
+  Site.guardImg = function (img) {
+    if (!img || img.dataset.guarded) return;
+    img.dataset.guarded = "1";
+    img.addEventListener("error", () => {
+      if (img.src && img.src.indexOf(Site.PLACEHOLDER) !== -1) return; // 占位图本身也挂了就别循环
+      img.src = Site.PLACEHOLDER;
+      img.classList.add("is-offline");
+    });
+  };
+
   Site.attachBase = function () {
     const db = Site.db;
     if (!db) return;
@@ -113,7 +130,7 @@
     node.innerHTML =
       '<div class="polaroid">' +
       '<span class="tape" aria-hidden="true"></span>' +
-      `<img class="polaroid__img" alt="${esc(p.title)}" data-src="${esc(p.src)}" style="aspect-ratio:${ar}" />` +
+      `<img class="polaroid__img" alt="${esc(p.title)}" data-src="${esc(Site.imgSrc(p.src))}" style="aspect-ratio:${ar}" />` +
       '<p class="polaroid__caption">' + esc(p.desc || p.title || "我们的日常") +
       (p.date
         ? '<span class="polaroid__date">' + esc(String(p.date).replace(/-/g, ".")) + " · " + esc(Site.placeLabel(p)) + "</span>"
@@ -128,7 +145,11 @@
           entries.forEach((en) => {
             if (!en.isIntersecting) return;
             const im = en.target.querySelector("img[data-src]");
-            if (im) { im.src = im.dataset.src; im.removeAttribute("data-src"); }
+            if (im) {
+              Site.guardImg(im);
+              im.src = im.dataset.src;
+              im.removeAttribute("data-src");
+            }
             wallIO.unobserve(en.target);
           }),
         { rootMargin: "600px 0px" }
@@ -232,7 +253,9 @@
     const lb = $("#lightbox");
     const p = Site.lightbox.items[Site.lightbox.idx];
     if (!lb || !p) return;
-    lb.querySelector(".lightbox__img").src = p.src;
+    const lbImg = lb.querySelector(".lightbox__img");
+    Site.guardImg(lbImg);
+    lbImg.src = Site.imgSrc(p.src);
     lb.querySelector(".lightbox__img").alt = p.title || "";
     const place = Site.placeLabel(p);
     lb.querySelector(".lightbox__caption").textContent =
@@ -365,7 +388,9 @@
       vid.controls = true;
       vid.preload = "metadata";
       vid.setAttribute("playsinline", "");
-      vid.src = v.src;
+      // NAS 不可用时留空 src，由 CSS 的占位背景兜着，别让浏览器去请求一个必然失败的地址
+      if (v.src) vid.src = v.src;
+      else card.classList.add("is-offline");
       // 拿到时长后补一行小字，没有标题时它就是唯一的说明
       vid.addEventListener(
         "loadedmetadata",

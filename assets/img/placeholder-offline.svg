@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="照片暂时不在">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#efebe3"/>
+      <stop offset="1" stop-color="#e3ded4"/>
+    </linearGradient>
+    <pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.6" fill="#2c2a26" opacity="0.05"/>
+      <circle cx="4" cy="3" r="0.5" fill="#2c2a26" opacity="0.035"/>
+    </pattern>
+  </defs>
+
+  <rect x="-600" y="-600" width="1500" height="1600" fill="url(#paper)"/>
+  <rect x="-600" y="-600" width="1500" height="1600" fill="url(#grain)"/>
+
+  <!-- 手绘相机轮廓 -->
+  <g fill="none" stroke="#7a5c3a" stroke-opacity="0.42" stroke-width="2.2"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M92 168 h34 l10 -14 h28 l10 14 h34 a8 8 0 0 1 8 8 v56 a8 8 0 0 1 -8 8 h-116 a8 8 0 0 1 -8 -8 v-56 a8 8 0 0 1 8 -8 z"/>
+    <circle cx="150" cy="202" r="22"/>
+    <path d="M118 176 h12"/>
+  </g>
+
+  <!-- 相机里的小月亮：暗示「睡着了」 -->
+  <path d="M158 192 a13 13 0 1 0 0 24 a10 10 0 0 1 0 -24 z" fill="#7a5c3a" fill-opacity="0.20"/>
+
+  <text x="150" y="272" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="15" fill="#6e6a61" letter-spacing="0.5">照片在 NAS 上睡着了</text>
+  <text x="150" y="296" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="12" fill="#8d8878" letter-spacing="1.2">NAS OFFLINE</text>
+
+  <!-- 底部一道手绘短划 -->
+  <path d="M130 318 h40" stroke="#7a5c3a" stroke-opacity="0.25" stroke-width="2" stroke-linecap="round"/>
+</svg>

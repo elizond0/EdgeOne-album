@@ -122,10 +122,16 @@
         db.photos.find((p) => p.file.split("/").pop() === heroFile) ||
         db.photos.find((p) => p.featured) ||
         db.photos[0];
-      if (heroPhoto && heroPhoto.src) {
-        const im = document.getElementById("hero-img");
-        im.src = heroPhoto.src;
-        im.alt = heroPhoto.title || "我们的合照";
+      const im = document.getElementById("hero-img");
+      if (im) {
+        if (heroPhoto) {
+          im.src = Site.imgSrc(heroPhoto.src);
+          im.alt = heroPhoto.title || "我们的合照";
+          Site.guardImg(im);
+        } else {
+          im.src = Site.PLACEHOLDER;
+          im.alt = "照片暂时不在";
+        }
       }
 
       /* ---------- 板块顺序（后台可调）+ CHAPTER 编号重排 ---------- */
