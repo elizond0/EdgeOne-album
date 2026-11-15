@@ -23,7 +23,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent                       # love-album/
-DEFAULT_DB = ROOT.parent / "love-album-app" / "data" / "db.json"
+# 元数据源：优先用仓库内的快照（自包含，不依赖外部目录）；
+# 没有的话退回旧的独立应用版仓库，方便从那边迁移。
+SEED = ROOT / "data" / "seed.json"
+LEGACY_DB = ROOT.parent / "love-album-app" / "data" / "db.json"
+DEFAULT_DB = SEED if SEED.exists() else LEGACY_DB
 DEFAULT_OUT = ROOT / "data" / "content.json"
 
 # 旧库（应用版 db.json）里没有、只在 NAS 路线里才有的配置项。
@@ -76,7 +80,7 @@ def load_nas(src):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=str(DEFAULT_DB), help="应用版 db.json")
+    ap.add_argument("--db", default=str(DEFAULT_DB), help="元数据来源（默认 data/seed.json）")
     ap.add_argument("--nas", default=str(ROOT / "base.json"), help="NAS index.json 地址或本地路径")
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--base", default="", help="强制指定素材根地址；不填则读 base.json 的 base")

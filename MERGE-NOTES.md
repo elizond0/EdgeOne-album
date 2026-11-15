@@ -1,5 +1,18 @@
 # 合并说明 · NAS 直链改造（2026-11-15）
 
+> ## ⚠️ 历史文档，架构已被取代，不要照着做
+>
+> 这份交接单描述的是**第一版** NAS 改造（运行时 fetch `base.json` + `index.json`，
+> 由 `scripts/nas.js` + `scripts/main.js` 承担）。那套渲染层后来被整体重写：
+>
+> - `scripts/nas.js` / `main.js` / `config.js` / `api.js` **已删除**
+> - 现在由 `scripts/site.js` 读 `data/content.json`，`content.json` 由 `scripts/build_content.py` 生成
+> - `content.json` 里存**相对路径**，运行时再拼 `base.json` 的地址
+> - 现在要看的是 `DEPLOY.md` 和 `README.md`
+>
+> 这份文件保留下来只为了两件事：记录当时的三处嵌入点为什么那样改、以及 md5 核对的方法。
+> 关于「页面不再读 `assets/photos/` 和 `config.js` 的 PHOTOS」这个提醒依然成立且更重要了。
+
 > 这份文件是给**另一个对话**看的交接单。它回答三件事：这次改了什么、你手上的副本是不是旧版、怎么合并不打架。
 > 分支：`workbuddy/album-nas-pipeline`　基线：`c0b00f0`（2026-10-28）　当前 main HEAD：`f1b4318`
 

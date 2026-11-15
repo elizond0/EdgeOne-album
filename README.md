@@ -47,7 +47,8 @@ love-album/
 ├── index.html  timeline.html  photos.html  quotes.html  wishes.html  videos.html
 ├── admin.html                 # 后台（导出 content.json）
 ├── base.json                  # 当前 NAS 隧道地址（由 pub_gh.sh 自动更新）
-├── data/content.json          # ★ 唯一内容源
+├── data/content.json          # ★ 唯一内容源（构建产物，含相对路径）
+├── data/seed.json             # ★ 元数据快照（标题/描述/地点/时间轴/心愿），构建的输入
 ├── styles/
 │   ├── tokens.css             # 颜色 / 字号 / 间距变量
 │   ├── base.css               # 重置与版式基础
