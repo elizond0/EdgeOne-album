@@ -129,7 +129,11 @@ say "=== 4/8 处理视频 ==="
 ORIG=$P/orig_video
 mkdir -p "$ORIG" "$OUT/video/poster"
 
-# 4a. 先把历史上遗留在 /srv/pub/video 里的原片挪进备份目录（旧流程产物，通常是空的）
+# 4a. 把历史上遗留在 /srv/pub/video 里的**原片**挪进备份目录（旧流程产物，通常是空的）。
+#     判据必须用「体积」而不是「有没有这个文件」：video/ 里现在躺的是转码成品，
+#     同名成品明显比原片小；无脑迁移会把成品搬进 orig_video，接着 4c 发现 video/
+#     空了 → 16 个视频全量重转一遍（实测白白多跑 2 分钟）。
+#     兜底规则：同名文件在两边都在、且大小一样时按成品处理（保留，不迁移）。
 for f in "$OUT"/video/*.mp4 "$OUT"/video/*.MP4 "$OUT"/video/*.mov "$OUT"/video/*.MOV; do
   [ -f "$f" ] || continue
   n=$(basename "$f")
@@ -137,7 +141,8 @@ for f in "$OUT"/video/*.mp4 "$OUT"/video/*.MP4 "$OUT"/video/*.mov "$OUT"/video/*
   low=$(printf '%s' "$low" | sed 's/\.mov$/.mp4/')
   if [ ! -f "$ORIG/$low" ]; then
     mv "$f" "$ORIG/$low" && say "  迁移 $n -> $low"
-  else
+  elif [ "$(stat -c %s "$f")" -lt "$(stat -c %s "$ORIG/$low")" ]; then
+    say "  清理残留原片 $n（已有备份，video/ 里这个是干扰项）"
     rm -f "$f"
   fi
 done
@@ -214,6 +219,6 @@ fi
 
 # ── 8. 收尾 ───────────────────────────────────────────────────────────────
 say "=== 8/8 完成 ==="
-say "压缩图 $(ls "$OUT/img" | wc -l) 张 / 缩略图 $(ls "$OUT/img/t" 2>/dev/null | wc -l) 张"
+say "压缩图 $(ls "$OUT/img"/*.jpg 2>/dev/null | wc -l) 张 / 缩略图 $(ls "$OUT/img/t"/*.jpg 2>/dev/null | wc -l) 张"
 say "视频 $(ls "$OUT/video"/*.mp4 2>/dev/null | wc -l) 个 / 封面 $(ls "$OUT/video/poster" 2>/dev/null | wc -l) 张"
 say "ALL_DONE"
