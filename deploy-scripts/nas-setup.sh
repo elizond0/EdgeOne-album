@@ -20,6 +20,10 @@
 # 可重入：已生成的缩略图 / 已转码的视频 / 已抽的封面都会跳过。
 
 set -u
+# 网页终端关掉后，后台脚本若还连着 pty，子进程 ffmpeg 会因为读 stdin 吃 SIGTTIN
+# 被整个停住：ps 里进程还在、CPU 时间 0、输出文件迟迟不出现。把 stdin 彻底摘干净，
+# 否则「终端一关脚本看着还活着，其实卡在第一个视频」这种问题很难查。
+exec </dev/null
 P=/var/lib/tailscale
 OUT=/srv/pub
 RAW=https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts
