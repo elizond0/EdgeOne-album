@@ -12,7 +12,12 @@
 #   换仓库分支：REPO_BRANCH=dev sh bootstrap-nas.sh
 
 P=${ALBUM_HOME:-/var/lib/tailscale}
-RAW=${ALBUM_RAW:-https://raw.githubusercontent.com/elizond0/EdgeOne-album/main/deploy-scripts}
+# 国内直连 raw.githubusercontent.com 经常只是「挂着不回」。与其每个文件都等一次超时
+# （8 个文件 × 6 秒 = 48 秒），不如先探一个探测请求，把快的源排到前面。
+RAW_GH="https://raw.githubusercontent.com/elizond0/EdgeOne-album/main/deploy-scripts"
+RAW_JS="https://cdn.jsdelivr.net/gh/elizond0/EdgeOne-album@main/deploy-scripts"
+# jsDelivr 对 @main 有缓存（几小时）。急用最新版就直接改 NAS 上那份，别指望镜像。
+RAW_LIST="${ALBUM_RAW:-$RAW_GH $RAW_JS}"
 RUN=1
 [ "$1" = "--no-run" ] && RUN=0
 
@@ -21,21 +26,36 @@ FILES="boot.sh setup-nas.sh base-sync.sh mkthumb.py mkindex.py pub_img.py pub_vi
 mkdir -p "$P"
 say() { printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
 
+# 探测哪个源快，把它排到前面
+if curl -fsS --connect-timeout 5 --max-time 10 -o /dev/null "$RAW_GH/Caddyfile" 2>/dev/null; then
+  RAW_LIST="${ALBUM_RAW:-$RAW_GH $RAW_JS}"
+  say "源：GitHub raw（直连可用）"
+else
+  RAW_LIST="${ALBUM_RAW:-$RAW_JS $RAW_GH}"
+  say "源：jsDelivr 镜像（raw 直连超时）"
+fi
+
+# 依次试每个源，拿到就算
+fetch() {
+  for base in $RAW_LIST; do
+    if curl -fsSL --connect-timeout 6 --max-time 15 -o "$2" "$base/$1" 2>/dev/null; then
+      # GitHub 的 404 页面也会返回 200 的情况，挡一下
+      head -c 20 "$2" | grep -q '404: Not Found' && continue
+      return 0
+    fi
+  done
+  return 1
+}
+
 say "同步脚本 → $P"
 fail=0
 for f in $FILES; do
-  if curl -fsSL --max-time 30 -o "$P/$f.new" "$RAW/$f"; then
-    # 先确认下下来的不是 GitHub 的 404 页面
-    if head -c 20 "$P/$f.new" | grep -q '404: Not Found'; then
-      echo "  ✗ $f 不存在（分支或路径不对）"
-      rm -f "$P/$f.new"
-      fail=1
-    else
-      mv "$P/$f.new" "$P/$f"
-      echo "  ✓ $f"
-    fi
+  if fetch "$f" "$P/$f.new"; then
+    mv "$P/$f.new" "$P/$f"
+    echo "  ✓ $f"
   else
-    echo "  ✗ $f 下载失败"
+    echo "  ✗ $f 所有源都失败"
+    rm -f "$P/$f.new"
     fail=1
   fi
 done

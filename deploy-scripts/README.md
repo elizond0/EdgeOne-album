@@ -33,6 +33,7 @@ NAS 文件 ──┬─ 原图原片 → 共享文件夹/Photos/        （给 U
 | 6 | `boot.sh` | 容器 `command` / rc.local | 起 Caddy → 起 cloudflared → 挂常驻地址同步 |
 | 7 | `base-sync.sh` | `boot.sh`（`--watch 300`） | 抓域名 → 验可达 → 比对 → 推 GitHub → 回读校验 |
 | 8 | `setup-nas.sh` | 手动（加完照片） | 一条命令跑完 缩略图 → 清单 → 地址同步 |
+| 9 | `bootstrap-nas.sh` | 手动（脚本有更新时） | 从 GitHub / jsDelivr 拉最新脚本到 NAS，再跑 setup |
 | — | `pub_gh.sh` | 旧调用兼容 | 转到 `base-sync.sh --url --force` |
 
 ## 容器里的路径约定
