@@ -1,0 +1,21 @@
+{
+  "services": {
+    "album-node": {
+      "image": "docker.1ms.run/library/alpine:3.20",
+      "container_name": "album-node",
+      "restart": "unless-stopped",
+      "tty": true,
+      "stdin_open": true,
+      "cap_add": ["NET_ADMIN", "NET_RAW"],
+      "devices": ["/dev/net/tun:/dev/net/tun"],
+      "volumes": [
+        "./csy:/srv/csy:ro",
+        "../Photos:/srv/photos",
+        "./album-pub:/srv/pub",
+        "./ts-state:/var/lib/tailscale"
+      ],
+      "ports": ["8443:8443"],
+      "command": ["sh", "-c", "sh /var/lib/tailscale/boot.sh"]
+    }
+  }
+}

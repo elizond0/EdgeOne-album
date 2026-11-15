@@ -1,0 +1,21 @@
+# Caddyfile —— 相册发布目录的静态服务（监听 8443，由 cloudflared 反代出去）
+#
+# 关键点：
+#   1. Access-Control-Allow-Origin "*" 必须有。
+#      站点在 elizond0.github.io，图片在 trycloudflare.com，跨域 fetch index.json
+#      没有这个头会被浏览器直接拦掉，前端表现为「一张图都不出来」。
+#   2. index.json 必须 no-store。
+#      否则隧道重启后拿到的是缓存的旧清单，新图要等缓存过期才出现。
+#   3. 其余文件可以长缓存（照片文件名带原文件名+时间，天然不重复）。
+
+:8443 {
+	root * /srv/pub
+	encode zstd gzip
+	file_server
+
+	header Access-Control-Allow-Origin "*"
+	header Cache-Control "public, max-age=604800"
+
+	@idx path /index.json
+	header @idx Cache-Control "no-store"
+}
