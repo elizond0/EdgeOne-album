@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" /><!-- 私密分享：禁止搜索引擎收录 -->
-  <title>我们的故事 · 恋爱纪念册</title>
+  <title>我们的故事 · Album</title>
   <!-- 中文手写感展示字霞鹜文楷（自托管，零外部请求）
        字体被切成 194 个 woff2 子集，靠 unicode-range 让浏览器只下用得上的那几个。
        ⚠ 两个坑，别改回去：
@@ -27,15 +27,15 @@
 
   <!-- 顶部导航（后台入口只在页脚，导航保持纯净） -->
   <header class="nav">
-    <a class="nav__logo" href="/"><span class="heart" aria-hidden="true">♥</span><span data-text="siteShort">我们的故事</span></a>
+    <a class="nav__logo" href="index.html"><span class="heart" aria-hidden="true">♥</span><span data-text="siteShort">我们的故事</span></a>
     <nav aria-label="页面导航">
       <ul class="nav__links">
-        <li><a href="/" data-text="navHome">首页</a></li>
-        <li><a href="/timeline.html" data-text="navTimeline">时间轴</a></li>
-        <li><a href="/photos.html" data-text="navPhotos">照片墙</a></li>
-        <li><a href="/quotes.html" data-text="navQuotes">随手记</a></li>
-        <li><a href="/wishes.html" data-text="navWishes">心愿单</a></li>
-        <li><a href="/videos.html" data-text="navVideos">影像</a></li>
+        <li><a href="index.html" data-text="navHome">首页</a></li>
+        <li><a href="timeline.html" data-text="navTimeline">时间轴</a></li>
+        <li><a href="photos.html" data-text="navPhotos">照片墙</a></li>
+        <li><a href="quotes.html" data-text="navQuotes">随手记</a></li>
+        <li><a href="wishes.html" data-text="navWishes">心愿单</a></li>
+        <li><a href="videos.html" data-text="navVideos">影像</a></li>
       </ul>
     </nav>
   </header>
@@ -67,7 +67,7 @@
         <p class="section__eyebrow" data-eyebrow>CHAPTER 01</p>
         <h2 class="section__title" data-text="secTimeline">时间轴</h2>
         <p class="section__desc" data-text="secTimelineDesc"></p>
-        <a class="more-link" href="/timeline.html"><span data-text="moreLabel">查看全部</span> →</a>
+        <a class="more-link" href="timeline.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
       <ol class="timeline" id="home-timeline"></ol>
     </section>
@@ -77,7 +77,7 @@
         <p class="section__eyebrow" data-eyebrow>CHAPTER 02</p>
         <h2 class="section__title" data-text="secPhotos">照片墙</h2>
         <p class="section__desc" data-text="secPhotosDesc"></p>
-        <a class="more-link" href="/photos.html"><span data-text="moreLabel">查看全部</span> →</a>
+        <a class="more-link" href="photos.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
       <div class="preview-grid" id="home-photos"></div>
       <!-- 滚动到这里就自动补下一批照片；按钮是给「观察器没触发」留的手动兜底 -->
@@ -85,7 +85,7 @@
         <button type="button" class="preview-more__btn" data-more>
           <span data-left></span> ↓
         </button>
-        <a class="more-link" href="/photos.html"><span data-text="moreLabel">查看全部</span> →</a>
+        <a class="more-link" href="photos.html"><span data-text="moreLabel">查看全部</span> →</a>
       </div>
     </section>
 
@@ -94,7 +94,7 @@
         <p class="section__eyebrow" data-eyebrow>CHAPTER 03</p>
         <h2 class="section__title" data-text="secQuotes">随手记</h2>
         <p class="section__desc" data-text="secQuotesDesc"></p>
-        <a class="more-link" href="/quotes.html"><span data-text="moreLabel">查看全部</span> →</a>
+        <a class="more-link" href="quotes.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
       <div class="quotes quotes--home" id="home-quotes"></div>
     </section>
@@ -104,7 +104,7 @@
         <p class="section__eyebrow" data-eyebrow>CHAPTER 04</p>
         <h2 class="section__title" data-text="secWishes">心愿单</h2>
         <p class="section__desc" data-text="secWishesDesc"></p>
-        <a class="more-link" href="/wishes.html"><span data-text="moreLabel">查看全部</span> →</a>
+        <a class="more-link" href="wishes.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
       <div class="wishes wishes--home" id="home-wishes"></div>
     </section>
@@ -114,7 +114,7 @@
         <p class="section__eyebrow" data-eyebrow>CHAPTER 05</p>
         <h2 class="section__title" data-text="secVideos">影像</h2>
         <p class="section__desc" data-text="secVideosDesc"></p>
-        <a class="more-link" href="/videos.html"><span data-text="moreLabel">查看全部</span> →</a>
+        <a class="more-link" href="videos.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
       <div class="videos" id="home-videos"></div>
     </section>
@@ -122,7 +122,8 @@
 
   <footer class="footer">
     <p><span data-text="footerNote">为了我们的纪念日，页面会一直更新下去</span> <span class="heart" aria-hidden="true">♥</span></p>
-    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="/admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
+    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
+    <p class="footer__stamp"><span data-stamp>2026.11.15 20:07</span></p>
   </footer>
 
   <script src="scripts/site.js"></script>
@@ -187,7 +188,7 @@
       Site.renderQuotes(document.getElementById("home-quotes"), (db.quotes || []).slice(0, cfg.quoteRows * 2));
 
       /* ---------- 心愿单：todo 两栏，条数可设 ---------- */
-      Site.renderWishes(document.getElementById("home-wishes"), (db.wishes || []).slice(0, cfg.wishCount));
+      Site.renderWishes(document.getElementById("home-wishes"), db.wishes || [], { limit: cfg.wishCount });
 
       /* ---------- 影像 ---------- */
       const vg = document.getElementById("home-videos");

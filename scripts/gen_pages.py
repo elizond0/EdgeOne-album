@@ -8,27 +8,36 @@ gen_pages.py —— 由统一模板生成 NAS 路线的 5 个子页面。
 
 用法：python3 scripts/gen_pages.py
 """
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+CST = timezone(timedelta(hours=8))
+
+
+def build_stamp():
+    """页脚版本时间戳：北京时间，精确到分钟。"""
+    return datetime.now(CST).strftime("%Y.%m.%d %H:%M")
 
 ROOT = Path(__file__).resolve().parent.parent
 
 NAV = """  <header class="nav">
-    <a class="nav__logo" href="/"><span class="heart" aria-hidden="true">♥</span><span data-text="siteShort">我们的故事</span></a>
+    <a class="nav__logo" href="index.html"><span class="heart" aria-hidden="true">♥</span><span data-text="siteShort">我们的故事</span></a>
     <nav aria-label="页面导航">
       <ul class="nav__links">
-        <li><a href="/" data-text="navHome">首页</a></li>
-        <li><a href="/timeline.html" data-text="navTimeline">时间轴</a></li>
-        <li><a href="/photos.html" data-text="navPhotos">照片墙</a></li>
-        <li><a href="/quotes.html" data-text="navQuotes">随手记</a></li>
-        <li><a href="/wishes.html" data-text="navWishes">心愿单</a></li>
-        <li><a href="/videos.html" data-text="navVideos">影像</a></li>
+        <li><a href="index.html" data-text="navHome">首页</a></li>
+        <li><a href="timeline.html" data-text="navTimeline">时间轴</a></li>
+        <li><a href="photos.html" data-text="navPhotos">照片墙</a></li>
+        <li><a href="quotes.html" data-text="navQuotes">随手记</a></li>
+        <li><a href="wishes.html" data-text="navWishes">心愿单</a></li>
+        <li><a href="videos.html" data-text="navVideos">影像</a></li>
       </ul>
     </nav>
   </header>"""
 
 FOOTER = """  <footer class="footer">
     <p><span data-text="footerNote">为了我们的纪念日，页面会一直更新下去</span> <span class="heart" aria-hidden="true">♥</span></p>
-    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="/admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
+    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
+    <p class="footer__stamp"><span data-stamp>{stamp}</span></p>
   </footer>"""
 
 TEMPLATE = """<!DOCTYPE html>
@@ -37,7 +46,7 @@ TEMPLATE = """<!DOCTYPE html>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>{title} · 我们的故事</title>
+  <title>{title} · Album</title>
   <link rel="preload" as="style" href="assets/fonts/wenkai.css" />
   <link rel="stylesheet" href="assets/fonts/wenkai.css" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="assets/fonts/wenkai.css" /></noscript>
@@ -112,11 +121,22 @@ PAGES = [
 
 
 def main():
+    stamp = build_stamp()
     for p in PAGES:
-        html = TEMPLATE.format(nav=NAV, footer=FOOTER, **p)
+        html = TEMPLATE.format(nav=NAV, footer=FOOTER.format(stamp=stamp), **p)
         (ROOT / p["file"]).write_text(html, encoding="utf-8")
         print(f"  生成 {p['file']:<16} {len(html.encode('utf-8')):>6} B")
     print(f"共 {len(PAGES)} 个页面")
+
+    # index.html 是手写的，不走模板；这里只把它的版本时间戳刷成同一时刻，
+    # 免得首页和子页面显示两个不同时间。
+    import re
+    idx = ROOT / "index.html"
+    html = idx.read_text(encoding="utf-8")
+    html2, n = re.subn(r"(<span data-stamp>)[^<]*(</span>)", r"\g<1>" + stamp + r"\g<2>", html)
+    if n:
+        idx.write_text(html2, encoding="utf-8")
+        print(f"  index.html 时间戳 → {stamp}")
 
 
 if __name__ == "__main__":

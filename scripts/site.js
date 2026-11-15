@@ -518,18 +518,32 @@
   };
 
   /* ---------- 心愿单（TodoList 风格，待解锁 / 已解锁两块） ---------- */
-  Site.renderWishes = function (container, items) {
+  // 两块始终都渲染，哪怕其中一块是空的——空着就把框架留在那儿并写一句提示，
+  // 不能因为「暂时没有已解锁」就让右栏整个消失，那样两栏布局会塌成单栏。
+  Site.renderWishes = function (container, items, opt) {
     if (!container) return;
     container.innerHTML = "";
     const all = items || [];
-    const mkGroup = (title, arr, cls) => {
-      if (!arr.length) return null;
+    const limit = (opt && opt.limit) || 0; // 每组最多显示几条，0 = 全部
+
+    const mkGroup = (title, list, cls, emptyText) => {
       const box = document.createElement("div");
       box.className = "wishbox " + cls;
+      const arr = limit ? list.slice(0, limit) : list;
+
       const h = document.createElement("h3");
       h.className = "wishbox__head";
-      h.innerHTML = esc(title) + "<small>" + arr.length + "</small>";
+      h.innerHTML = esc(title) + "<small>" + list.length + "</small>";
       box.appendChild(h);
+
+      if (!arr.length) {
+        const ph = document.createElement("p");
+        ph.className = "wishbox__empty";
+        ph.textContent = emptyText;
+        box.appendChild(ph);
+        return box;
+      }
+
       arr.forEach((w, i) => {
         const card = document.createElement("div");
         card.className = "wish reveal" + (w.done ? " wish--done" : "");
@@ -543,10 +557,13 @@
       });
       return box;
     };
-    const b1 = mkGroup("待解锁", all.filter((w) => !w.done), "wishbox--todo");
-    const b2 = mkGroup("已解锁", all.filter((w) => w.done), "wishbox--done");
-    if (b1) container.appendChild(b1);
-    if (b2) container.appendChild(b2);
+
+    container.appendChild(
+      mkGroup("待解锁", all.filter((w) => !w.done), "wishbox--todo", "还没有写下的愿望，去后台加一条吧。")
+    );
+    container.appendChild(
+      mkGroup("已解锁", all.filter((w) => w.done), "wishbox--done", "还没解锁的愿望，等着我们一起完成。")
+    );
   };
 
   /* ---------- 影像 ---------- */
@@ -617,7 +634,7 @@
   Site.homeCfg = function () {
     const h = (Site.db && Site.db.meta && Site.db.meta.home) || {};
     const ALL = ["timeline", "photos", "quotes", "wishes", "videos"];
-    const rows = Math.max(1, +h.photoRows || 3);
+    const rows = Math.max(1, +h.photoRows || 2);
     return {
       timelineCount: Math.max(1, +h.timelineCount || 5),
       photoRows: rows,                                              // 首屏先铺几排

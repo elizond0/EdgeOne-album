@@ -10,7 +10,7 @@
   },
   "hero": "IMG_6914.jpg",
   "texts": {
-   "siteTitle": "我们的故事 · 纪念册",
+   "siteTitle": "我们的故事 · Album",
    "navHome": "首页",
    "navTimeline": "时间轴",
    "navPhotos": "照片墙",
@@ -39,7 +39,7 @@
   },
   "home": {
    "timelineCount": 5,
-   "photoRows": 3,
+   "photoRows": 2,
    "quoteRows": 1,
    "wishCount": 8,
    "showVideos": "auto",

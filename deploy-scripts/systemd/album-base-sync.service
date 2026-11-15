@@ -8,8 +8,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=ALBUM_HOME=/opt/album
-Environment=ALBUM_REPO=elizond0/EdgeOne-album
-Environment=ALBUM_PAGES=https://elizond0.github.io/EdgeOne-album
+Environment=ALBUM_REPO=elizond0/album
+Environment=ALBUM_PAGES=https://elizond0.github.io/album
 ExecStart=/bin/sh /opt/album/base-sync.sh
 # 失败不算灾难：下一轮 timer 会再来
 SuccessExitStatus=0 1

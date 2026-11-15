@@ -115,8 +115,8 @@
   function renderHomeCfg() {
     const h = (db.meta && db.meta.home) || {};
     $("#f-h-tl").value = h.timelineCount || 5;
-    $("#f-h-pr").value = h.photoRows || 3;
-    if ($("#f-h-pmax")) $("#f-h-pmax").value = h.photoRowsMax || Math.max(3, (h.photoRows || 3) + 3);
+    $("#f-h-pr").value = h.photoRows || 2;
+    if ($("#f-h-pmax")) $("#f-h-pmax").value = h.photoRowsMax || Math.max(4, (h.photoRows || 2) + 4);
     $("#f-h-qr").value = h.quoteRows || 1;
     $("#f-h-wc").value = h.wishCount || 8;
     $("#f-h-videos").value = h.showVideos || "auto";
@@ -413,7 +413,7 @@
       db.meta.couple = { a: $("#f-couple-a").value.trim(), b: $("#f-couple-b").value.trim() };
     if ($("#f-hero")) db.meta.hero = $("#f-hero").value.trim();
     if ($("#f-h-tl")) {
-      const first = num("#f-h-pr", 3, 1, 6);
+      const first = num("#f-h-pr", 2, 1, 6);
       db.meta.home = {
         timelineCount: num("#f-h-tl", 5, 1, 20),
         photoRows: first,

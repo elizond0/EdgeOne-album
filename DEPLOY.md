@@ -32,7 +32,7 @@
 
 ## 二、首次部署
 
-1. 把本目录推到 GitHub 仓库（`elizond0/EdgeOne-album`），根目录即静态站
+1. 把本目录推到 GitHub 仓库（`elizond0/album`），根目录即静态站
 2. 仓库 Settings → Pages → Source 选 `main` 分支根目录
 3. NAS 上执行 `sh deploy-scripts/boot.sh`：起 Caddy、起隧道、常驻地址同步
 4. 打开站点验证首屏图和照片墙能出来

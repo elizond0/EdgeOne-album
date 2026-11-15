@@ -25,8 +25,8 @@
 # 依赖：curl、base64（busybox 自带）
 
 P=${ALBUM_HOME:-/var/lib/tailscale}
-REPO=${ALBUM_REPO:-elizond0/EdgeOne-album}
-PAGES=${ALBUM_PAGES:-https://elizond0.github.io/EdgeOne-album}
+REPO=${ALBUM_REPO:-elizond0/album}
+PAGES=${ALBUM_PAGES:-https://elizond0.github.io/album}
 TOKF=$P/.gh_token
 LOG=$P/base-sync.log
 API="https://api.github.com/repos/$REPO/contents/base.json"

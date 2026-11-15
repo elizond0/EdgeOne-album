@@ -6,7 +6,7 @@
 #   这条命令永远拿 main 分支的最新版，覆盖到脚本家目录，再执行。
 #
 # 用法（在 NAS 容器终端里）：
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/elizond0/EdgeOne-album/main/deploy-scripts/bootstrap-nas.sh)"
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/bootstrap-nas.sh)"
 #
 #   只同步不执行：加 --no-run
 #   换仓库分支：REPO_BRANCH=dev sh bootstrap-nas.sh
@@ -14,8 +14,8 @@
 P=${ALBUM_HOME:-/var/lib/tailscale}
 # 国内直连 raw.githubusercontent.com 经常只是「挂着不回」。与其每个文件都等一次超时
 # （8 个文件 × 6 秒 = 48 秒），不如先探一个探测请求，把快的源排到前面。
-RAW_GH="https://raw.githubusercontent.com/elizond0/EdgeOne-album/main/deploy-scripts"
-RAW_JS="https://cdn.jsdelivr.net/gh/elizond0/EdgeOne-album@main/deploy-scripts"
+RAW_GH="https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts"
+RAW_JS="https://cdn.jsdelivr.net/gh/elizond0/album@main/deploy-scripts"
 # jsDelivr 对 @main 有缓存（几小时）。急用最新版就直接改 NAS 上那份，别指望镜像。
 RAW_LIST="${ALBUM_RAW:-$RAW_GH $RAW_JS}"
 RUN=1
