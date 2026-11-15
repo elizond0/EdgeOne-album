@@ -27,10 +27,10 @@
 2. 改完点 **「保存并导出 content.json」**
 3. 覆盖仓库里的 `data/content.json`，刷新页面即生效
 
-加照片不走后台：把文件放进 NAS 的照片目录，在 `album-node` 容器里跑一次
-`deploy-scripts/nas-setup.sh`（统一文件名小写 + 生成缩略图 + 转码视频 + 抽封面
-+ 重建 `index.json` + 拉起域名自愈常驻），再用 `scripts/build_content.py` 重建内容清单。
-详细流程和注意事项见 **`docs/相册发布处理-规范.md`**。
+加照片 / 加视频都不走后台：把文件放进 NAS 的 `共享文件夹/Photos/`，在 `album-node` 容器里跑一次
+`deploy-scripts/nas-setup.sh`（统一文件名小写 → 生成公网压缩图 → 视频转码 + 抽首帧封面
+→ 生成缩略图 → 重建 `index.json` → 拉起域名自愈常驻），再用 `scripts/build_content.py`
+重建内容清单。详细流程和注意事项见 **`docs/相册发布处理-规范.md`**。
 
 ## 本地预览
 
@@ -64,10 +64,11 @@ love-album/
 │   ├── build_content.py       # seed.json + NAS 清单 → data/content.json
 │   └── gen_pages.py           # 用统一模板生成 5 个子页面
 ├── deploy-scripts/
-│   ├── boot.sh                # NAS 开机：Caddy + 隧道 + 常驻地址同步
-│   ├── setup-nas.sh           # 加完照片跑这个：缩略图 → 清单 → 地址
-│   ├── mkthumb.py             # 原图 → img/t/ 缩略图（长边 720，体积 12%）
-│   ├── mkindex.py             # 生成 index.json
+│   ├── boot.sh                # NAS 开机：装依赖 + Caddy + 隧道 + 常驻地址同步
+│   ├── nas-setup.sh           # ★ 加完照片/视频跑这一个：压缩图 → 视频 → 缩略图 → 清单 → 地址
+│   ├── pub_img.py             # 原图 → img/ 压缩图（2048/q85/去 EXIF）+ img_index.json
+│   ├── mkthumb.py             # 压缩图 → img/t/ 缩略图（长边 720，体积 12%）
+│   ├── mkindex.py             # 生成 index.json（带 t 缩略图 / p 封面字段）
 │   ├── base-sync.sh           # 隧道地址变了就推 GitHub（幂等，带校验）
 │   └── systemd/               # 裸机部署用的 service + timer
 └── assets/fonts               # 自托管字体（霞鹜文楷子集，非阻塞异步加载）

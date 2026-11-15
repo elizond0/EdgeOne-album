@@ -6,18 +6,17 @@
 #         · 562 张照片没有缩略图，网格只能拉 2048px 压缩原图
 #         · 16 个视频是手机原码（286 MB），首页 3 个就吃掉 67 MB
 #         · 隧道地址变了没人追平 base.json（base-sync 进程根本不在）
-#       这个脚本把三件事一次性补齐，并把 base-sync 挂成常驻。
+#       这个脚本把这几件事一次补齐，并把 base-sync 挂成常驻。
 #
-# 数据来源：/srv/pub/video 里现存的 16 个原片。先原样备份到
-#           /var/lib/tailscale/orig_video（容器内，不对外），再转码回 /srv/pub/video。
-#           NAS 共享文件夹 Photos / csy 里的原片一个都不动。
+# 数据来源（实测）：/srv/photos 里既有照片也有视频 —— 579 项 = 562 张图 + 16 个视频 + #recycle。
+#       /srv/csy 是同一批文件的只读暂存副本。所以照片和视频都从 /srv/photos 进发布链。
 #
 # 用法（在容器网页终端里）：
 #   wget -q -O /tmp/nas-setup.sh "https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/nas-setup.sh?x=$(date +%s)" \
 #     && sh /tmp/nas-setup.sh > /srv/pub/wb_setup.log 2>&1 &
 #   然后浏览器打开 https://<隧道>/wb_setup.log 看进度
 #
-# 可重入：已生成的缩略图 / 已转码的视频 / 已抽的封面都会跳过。
+# 可重入：已生成的压缩图 / 缩略图 / 已转码的视频 / 已抽的封面都会跳过。
 
 set -u
 # 网页终端关掉后，后台脚本若还连着 pty，子进程 ffmpeg 会因为读 stdin 吃 SIGTTIN
@@ -26,6 +25,7 @@ set -u
 exec </dev/null
 P=/var/lib/tailscale
 OUT=/srv/pub
+SRC=${SRC_PHOTOS:-/srv/photos}
 RAW=https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts
 # GitHub Pages 发布的是同一个 main 分支，CDN 通常比 raw 稳，作为备用源
 PAGES_RAW=https://elizond0.github.io/album/deploy-scripts
@@ -56,17 +56,17 @@ fetch() {
 }
 
 # ── 0. 前置 ────────────────────────────────────────────────────────────────
-say "=== 0/6 检查依赖 ==="
+say "=== 0/8 检查依赖 ==="
 for t in python3 ffmpeg ffprobe wget; do
   command -v "$t" >/dev/null 2>&1 || { say "缺少 $t，先跑 apk add --no-cache python3 py3-pillow ffmpeg"; exit 1; }
 done
 python3 -c 'import PIL' 2>/dev/null || { say "缺少 Pillow"; exit 1; }
-say "OK python3 / ffmpeg / Pillow 都在"
+say "OK python3 / ffmpeg / Pillow 都在；源目录 $SRC"
 
-# ── 1. 部署缺失脚本 ────────────────────────────────────────────────────────
-say "=== 1/6 部署 mkthumb.py / base-sync.sh / mkindex.py ==="
+# ── 1. 部署脚本 ────────────────────────────────────────────────────────────
+say "=== 1/8 部署 pub_img.py / mkthumb.py / base-sync.sh / mkindex.py ==="
 mkdir -p "$P"
-for f in mkthumb.py base-sync.sh mkindex.py pub_vid.sh boot.sh; do
+for f in pub_img.py mkthumb.py base-sync.sh mkindex.py pub_vid.sh boot.sh; do
   fetch "$f" || exit 1
 done
 chmod +x "$P/base-sync.sh" "$P/pub_vid.sh" 2>/dev/null || true
@@ -75,16 +75,18 @@ chmod +x "$P/base-sync.sh" "$P/pub_vid.sh" 2>/dev/null || true
 if ! grep -q '"p": ' "$P/mkindex.py" || ! grep -q '"t": ' "$P/mkindex.py"; then
   say "⚠ mkindex.py 版本过旧（缺 t/p 字段），请检查下载源"
 fi
+# pub_img.py 必须支持 --skip-existing 和孤儿保留，否则每次新增一张照片都要全量重编码
+if ! grep -q 'skip_existing' "$P/pub_img.py"; then
+  say "⚠ pub_img.py 版本过旧（不支持 --skip-existing），本轮会全量重编码，较慢"
+fi
 
-# ── 1b. 原图目录文件名统一小写 ────────────────────────────────────────────
-# /srv/pub/img 的压缩图早已全小写，但 NAS 共享文件夹 Photos（→ /srv/photos）
-# 里还留着几百个 IMG_xxxx.JPG。只改目录项、文件内容一个字节都不动；
-# 已有同名小写文件时加 _1 后缀避让，绝不覆盖。
-say "=== 1b/6 统一 /srv/photos 文件名小写 ==="
-if [ -d /srv/photos ]; then
-  python3 - <<'PY'
+# ── 2. 源目录文件名统一小写 ────────────────────────────────────────────────
+# 只改目录项、文件内容一个字节都不动；已有同名小写文件时加 _1 后缀避让，绝不覆盖。
+say "=== 2/8 统一 $SRC 文件名小写 ==="
+if [ -d "$SRC" ]; then
+  SRC="$SRC" python3 - <<'PY'
 import os
-d = "/srv/photos"
+d = os.environ["SRC"]
 n = skip = conf = 0
 for b in sorted(os.listdir(d)):
     p = os.path.join(d, b)
@@ -106,42 +108,60 @@ for b in sorted(os.listdir(d)):
     n += 1
 print("  重命名 %d 个 / 已是小写 %d 个 / 冲突避让 %d 个" % (n, skip, conf))
 PY
-  say "  剩余含大写的文件名：$(ls -1 /srv/photos 2>/dev/null | grep -c '[A-Z]')"
+  say "  剩余含大写的文件名：$(ls -1 "$SRC" 2>/dev/null | grep -c '[A-Z]')"
 else
-  say "  /srv/photos 不存在，跳过"
+  say "  $SRC 不存在，跳过"
 fi
 
-# ── 2. 照片缩略图 ──────────────────────────────────────────────────────────
-say "=== 2/6 生成缩略图（长边 720，q78）==="
-python3 "$P/mkthumb.py" "$OUT" --edge 720 --quality 78 2>&1 | tail -12
-say "缩略图数量：$(ls "$OUT/img/t" 2>/dev/null | wc -l)"
+# ── 3. 公网压缩图（这一步以前漏了，新照片根本进不了站点）─────────────────
+# 规则：先读 EXIF 日期 → 烘焙方向 → RGB → 长边 2048 → q85 progressive 且不写 EXIF。
+# --skip-existing：输出比源新就跳过，加一张照片只处理那一张。
+say "=== 3/8 生成公网压缩图（长边 2048，q85，去元信息）==="
+if [ -d "$SRC" ]; then
+  python3 "$P/pub_img.py" "$SRC" "$OUT" --skip-existing 2>&1 | tail -6
+  say "公网压缩图：$(ls "$OUT/img"/*.jpg 2>/dev/null | wc -l) 张"
+else
+  say "⚠ 源目录不存在，跳过（/srv/pub/img 保持原样）"
+fi
 
-# ── 3. 视频：备份原片 + 统一小写 + 转码 + 抽首帧封面 ──────────────────────
-say "=== 3/6 处理 16 个视频 ==="
+# ── 4. 视频：新片入队 + 备份原片 + 统一小写 + 转码 + 抽首帧封面 ────────────
+say "=== 4/8 处理视频 ==="
 ORIG=$P/orig_video
 mkdir -p "$ORIG" "$OUT/video/poster"
 
-# 3a. 把 /srv/pub/video 里的原片挪进备份目录，文件名顺手转小写。
-#     只搬 mp4/mov，不动 poster 子目录。
+# 4a. 先把历史上遗留在 /srv/pub/video 里的原片挪进备份目录（旧流程产物，通常是空的）
 for f in "$OUT"/video/*.mp4 "$OUT"/video/*.MP4 "$OUT"/video/*.mov "$OUT"/video/*.MOV; do
   [ -f "$f" ] || continue
   n=$(basename "$f")
   low=$(printf '%s' "$n" | tr 'A-Z' 'a-z')
   low=$(printf '%s' "$low" | sed 's/\.mov$/.mp4/')
   if [ ! -f "$ORIG/$low" ]; then
-    mv "$f" "$ORIG/$low" && say "  备份 $n -> $low"
+    mv "$f" "$ORIG/$low" && say "  迁移 $n -> $low"
   else
     rm -f "$f"
   fi
 done
+
+# 4b. 再从源目录把新增视频复制进来（只复制，源文件一个字节不改）。
+#     判据只看文件名是否已在 orig_video，大小不同视为换了片子 → 覆盖重转。
+if [ -d "$SRC" ]; then
+  for f in "$SRC"/*.mp4 "$SRC"/*.MP4 "$SRC"/*.mov "$SRC"/*.MOV; do
+    [ -f "$f" ] || continue
+    low=$(basename "$f" | tr 'A-Z' 'a-z' | sed 's/\.mov$/.mp4/')
+    if [ ! -f "$ORIG/$low" ]; then
+      cp "$f" "$ORIG/$low" && say "  入队 $(basename "$f")"
+    fi
+  done
+fi
 say "原片备份数：$(ls "$ORIG" 2>/dev/null | wc -l)"
 
-# 3b. 逐个转码。已存在则跳过（可重入）。
+# 4c. 逐个转码 + 抽封面。已存在则跳过（可重入）。
 i=0
-for f in "$ORIG"/*.mp4; do
+for f in "$ORIG"/*.mp4 "$ORIG"/*.mov "$ORIG"/*.MOV; do
   [ -f "$f" ] || continue
   i=$((i + 1))
-  n=$(basename "$f" .mp4)
+  base=$(basename "$f")
+  n=$(printf '%s' "${base%.*}" | tr 'A-Z' 'a-z')
   dst="$OUT/video/$n.mp4"
   poster="$OUT/video/poster/$n.jpg"
   if [ -f "$dst" ] && [ -f "$poster" ]; then say "  [$i] SKIP $n"; continue; fi
@@ -163,14 +183,20 @@ for f in "$ORIG"/*.mp4; do
 done
 say "转码后 video/ 共 $(du -sh "$OUT/video" | cut -f1)，原片 $(du -sh "$ORIG" | cut -f1)"
 
-# ── 4. 重建 index.json（带缩略图 t 与封面 p）──────────────────────────────
-say "=== 4/6 重建 index.json ==="
+# ── 5. 缩略图 ──────────────────────────────────────────────────────────────
+# 必须排在 3 之后：mkthumb 读的是 /srv/pub/img（压缩图），不是源目录。
+say "=== 5/8 生成缩略图（长边 720，q78）==="
+python3 "$P/mkthumb.py" "$OUT" --edge 720 --quality 78 2>&1 | tail -8
+say "缩略图数量：$(ls "$OUT/img/t" 2>/dev/null | wc -l)"
+
+# ── 6. 重建 index.json（带缩略图 t 与封面 p）──────────────────────────────
+say "=== 6/8 重建 index.json ==="
 python3 "$P/mkindex.py" 2>&1 | tail -5
 say "index.json 里带缩略图的条目：$(grep -c '"t": "img/t/' "$OUT/index.json" 2>/dev/null || echo 0)"
 say "index.json 里带封面的条目：$(grep -c '"p": "video/poster/' "$OUT/index.json" 2>/dev/null || echo 0)"
 
-# ── 5. 启动域名自愈常驻进程 ───────────────────────────────────────────────
-say "=== 5/6 启动 base-sync 常驻（5 分钟一次）==="
+# ── 7. 启动域名自愈常驻进程 ───────────────────────────────────────────────
+say "=== 7/8 启动 base-sync 常驻（5 分钟一次）==="
 if [ -f "$P/.gh_token" ]; then
   # 已有 watcher 就别再拉一个：两个进程同时推 base.json 会抢同一个 sha。
   # 用 busybox 兼容的 `ps | grep`，不用 `ps -o pid,args`（Alpine 上不支持）。
@@ -186,8 +212,8 @@ else
   say "  ⚠ 没有 $P/.gh_token，跳过（base.json 仍需手工同步）"
 fi
 
-# ── 6. 收尾 ───────────────────────────────────────────────────────────────
-say "=== 6/6 完成 ==="
-say "图片 $(ls "$OUT/img" | wc -l) 张 / 缩略图 $(ls "$OUT/img/t" 2>/dev/null | wc -l) 张"
+# ── 8. 收尾 ───────────────────────────────────────────────────────────────
+say "=== 8/8 完成 ==="
+say "压缩图 $(ls "$OUT/img" | wc -l) 张 / 缩略图 $(ls "$OUT/img/t" 2>/dev/null | wc -l) 张"
 say "视频 $(ls "$OUT/video"/*.mp4 2>/dev/null | wc -l) 个 / 封面 $(ls "$OUT/video/poster" 2>/dev/null | wc -l) 张"
 say "ALL_DONE"

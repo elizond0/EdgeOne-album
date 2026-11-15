@@ -41,6 +41,10 @@ def pick_date(im, path):
                     return s[:10].replace(":", "-")
     except Exception:
         pass
+    return date_from_mtime(path)
+
+
+def date_from_mtime(path):
     try:
         import datetime
         return datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d")
@@ -59,22 +63,55 @@ def to_rgb(im):
     return im.convert("RGB")
 
 
+def load_prev(idx):
+    """读上一次的 img_index.json。跳过已有文件时靠它保住原来的拍摄日期与宽高，
+    否则每次增量重跑都会把日期退化成文件修改时间。"""
+    try:
+        with open(idx, encoding="utf-8") as f:
+            return {x["f"]: x for x in json.load(f).get("items", []) if x.get("f")}
+    except Exception:
+        return {}
+
+
 def main():
-    if len(sys.argv) < 3:
-        sys.exit("用法: pub_img.py <源目录> <输出目录>")
-    src, out = sys.argv[1], sys.argv[2]
+    pos = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    if len(pos) < 2:
+        sys.exit("用法: pub_img.py <源目录> <输出目录> [--skip-existing] [--no-orphans]")
+    src, out = pos[0], pos[1]
+    skip_existing = "--skip-existing" in flags    # 增量：输出比源新就跳过，不重新编码
+    keep_orphans = "--no-orphans" not in flags    # 源里已删、公网还在的图保留在清单里
     imgdir = os.path.join(out, "img")
     os.makedirs(imgdir, exist_ok=True)
+    idx = os.path.join(out, "img_index.json")
+    prev = load_prev(idx)
 
     names = sorted(n for n in os.listdir(src)
                    if os.path.isfile(os.path.join(src, n))
                    and os.path.splitext(n)[1].lower() in EXTS)
 
-    items, ok, fail, saved_in, saved_out = [], 0, 0, 0, 0
+    items, ok, fail, skip, saved_in, saved_out = [], 0, 0, 0, 0, 0
     for i, name in enumerate(names, 1):
         p = os.path.join(src, name)
         stem = os.path.splitext(name)[0]
         dst = os.path.join(imgdir, stem.lower() + ".jpg")
+        fname = os.path.basename(dst)
+
+        # 增量：输出已存在且不比源旧，就沿用旧条目。562 张全跳过只要几秒，
+        # 而全量重编码要十几分钟 —— 加一张照片跑一次全量是不可接受的。
+        if skip_existing and os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(p):
+            it = prev.get(fname)
+            if not it:
+                try:
+                    with Image.open(dst) as im:
+                        w, h = im.size
+                except Exception:
+                    w = h = 0
+                it = {"f": fname, "d": date_from_mtime(dst), "w": w, "h": h, "k": "photo"}
+            items.append(it)
+            skip += 1
+            continue
+
         try:
             with Image.open(p) as raw:
                 date = pick_date(raw, p)
@@ -98,17 +135,37 @@ def main():
         if i % 50 == 0 or i == len(names):
             print(f"  {i}/{len(names)}", file=sys.stderr)
 
+    # 孤儿条目：源目录里已经没有、但 /srv/pub/img 里还在的图（历史遗留，如 img_6531）。
+    # 不补回去的话，重跑一次 pub_img 就会让它从站点上静默消失 —— 这类「删了一个字节都不报错」
+    # 的损失最难发现，宁可多留一条也可以由 --no-orphans 显式关掉。
+    orphan = 0
+    if keep_orphans and os.path.isdir(imgdir):
+        have = {x["f"] for x in items}
+        for n in sorted(os.listdir(imgdir)):
+            if not n.lower().endswith(".jpg") or n in have:
+                continue
+            it = prev.get(n)
+            if not it:
+                try:
+                    with Image.open(os.path.join(imgdir, n)) as im:
+                        w, h = im.size
+                except Exception:
+                    continue
+                it = {"f": n, "d": date_from_mtime(os.path.join(imgdir, n)),
+                      "w": w, "h": h, "k": "photo"}
+            items.append(it)
+            orphan += 1
+
     items.sort(key=lambda x: (x["d"], x["f"]), reverse=True)
-    idx = os.path.join(out, "img_index.json")
     with open(idx, "w", encoding="utf-8") as f:
         json.dump({"count": len(items), "items": items}, f, ensure_ascii=False, indent=1)
 
     print(json.dumps({
-        "ok": ok, "fail": fail,
+        "ok": ok, "fail": fail, "skip": skip, "orphan": orphan,
         "src_MB": round(saved_in / 1048576, 1),
         "out_MB": round(saved_out / 1048576, 1),
         "ratio": round(saved_out / saved_in, 3) if saved_in else 0,
-        "index": idx,
+        "total": len(items), "index": idx,
     }, ensure_ascii=False))
 
 

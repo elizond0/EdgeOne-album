@@ -15,8 +15,9 @@
        └─ scripts/site.js        ← 渲染与交互，运行时把相对路径拼成完整 URL
 
 家里 NAS（album-node 容器）
-  ├─ /srv/csy   ← 原始照片视频（暂存区，只读挂载）
-  ├─ /srv/pub   ← 发布产物：img/ 原图、img/t/ 缩略图、video/、index.json、base.json
+  ├─ /srv/photos ← 原图原片（共享文件夹 Photos，可写；实测 562 张图 + 16 个视频）
+  ├─ /srv/csy    ← 同一批文件的只读暂存副本
+  ├─ /srv/pub    ← 发布产物：img/ 压缩图、img/t/ 缩略图、video/、video/poster/、index.json、base.json
   └─ Caddy :8443 + cloudflared → https://xxxx.trycloudflare.com
         └─ base-sync.sh 常驻：盯住地址，变了就推回 GitHub
 ```
@@ -42,36 +43,46 @@
 
 ---
 
-## 三、日常更新：加照片（最常用）
+## 三、日常更新：加照片 / 加视频（最常用）
 
-照片**不在网页后台上传**，直接放 NAS 目录就行：
+照片和视频**都不在网页后台上传**，直接丢进 NAS 的 `共享文件夹/Photos/`（容器内是 `/srv/photos`）。
+实测这个目录既有图也有视频：579 项 = 562 张图 + 16 个视频 + 回收站目录。
 
-```bash
-# 1. 新照片丢进 NAS 的 /srv/csy/
-# 2. NAS 上一条命令跑完全链路：
-sh /var/lib/tailscale/setup-nas.sh
-#    内部顺序：生成缩略图 → 重建 index.json → 核对隧道地址
-# 3. 回网页后台 admin.html，为新增照片补描述/地点（可选）
-# 4. 「保存并导出 content.json」→ 覆盖到站点 data/content.json
-# 5. git add data/content.json && git commit -m "chore: 更新照片" && git push
-```
-
-第 2 步如果是从零开始（`/srv/pub/img` 还是空的），要先跑一次原图转换：
+放好之后，在容器终端里跑**一条命令**：
 
 ```bash
-python3 /var/lib/tailscale/pub_img.py /srv/csy /srv/pub
-python3 /var/lib/tailscale/pub_vid.sh
-sh      /var/lib/tailscale/setup-nas.sh
+wget -q -O /tmp/nas-setup.sh \
+  "https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/nas-setup.sh?x=$(date +%s)"
+sh /tmp/nas-setup.sh > /srv/pub/wb_setup.log 2>&1 &
+# 进度：https://<当前隧道>/wb_setup.log
 ```
 
-> `mkindex.py` 里视频的拍摄日期与宽高由 `ffprobe` 读取（NAS 上要装 ffmpeg；
-> 没装也能跑，只是视频会退化成「无日期、靠浏览器判竖横」）。
+脚本内部八步（可重入，已完成的全部跳过）：
 
-> 本地重建 content.json（不需要 NAS 在线也能做，只要 `index.json` 拉得到）：
-> ```bash
-> python3 scripts/build_content.py
-> ```
-> 它会读 `base.json` 的地址去拉 NAS 清单，再与 `data/seed.json` 按文件名合并。
+| 步 | 做什么 | 增量判据 |
+|---|---|---|
+| 1 | 从 GitHub 拉最新脚本（raw 优先 / Pages 兜底，`.tmp` 原子写） | 每轮都拉 |
+| 2 | 源目录文件名转小写 | 已是小写跳过 |
+| 3 | **生成公网压缩图**（长边 2048、去 EXIF、q85 progressive） | 输出比源新就跳过 |
+| 4 | 新增视频入队 → 转码 720p H.264 → 抽首帧封面 | `video/` 与 `poster/` 都在就跳过 |
+| 5 | 生成网格缩略图（长边 720、q78） | 输出比源新就跳过 |
+| 6 | 重建 `index.json`（带 `t` 缩略图与 `p` 封面字段） | 每轮重建 |
+| 7 | 起 `base-sync.sh --watch 300` | 已有 watcher 则跳过 |
+
+跑完刷新页面就能看到新内容，**不需要重启容器、不需要重新推送 GitHub**。
+
+> 第 3 步以前是缺的：只跑缩略图不会把新照片变成公网压缩图，新照片永远进不了站点。
+> 现在 `pub_img.py` 支持 `--skip-existing`，加 1 张照片只处理 1 张（全量重编码 562 张要十几分钟）。
+
+### 把清单同步回站点（改完 NAS 后必做）
+
+`content.json` 里的 `thumb` / `poster` 字段来自 NAS 的 `index.json`，所以要重建一次：
+
+```bash
+python3 scripts/build_content.py --nas https://<当前隧道>/index.json
+python3 scripts/gen_pages.py                 # 刷新子页面与页脚时间戳
+git add -A && git commit -m "chore(content): 同步 NAS 清单" && git push
+```
 
 ### 发布
 
@@ -79,8 +90,8 @@ sh      /var/lib/tailscale/setup-nas.sh
 sh scripts/release.sh
 ```
 
-做三件事：重新生成 5 个子页面（顺带把页脚版本时间戳刷成当前时间）→ 提交 →
-推送。**每次上线都跑这条**，页脚时间才等于这次部署的时间。
+重新生成 5 个子页面（顺带把页脚版本时间戳刷成当前时间）→ 提交 → 推送。
+**每次上线都跑这条**，页脚时间才等于这次部署的时间。
 
 站点地址：<https://elizond0.github.io/album/>
 
@@ -115,7 +126,7 @@ sh scripts/release.sh
 
 ---
 
-## 五、首页为什么只铺 3 排
+## 五、首页为什么只铺 2 排
 
 隧道实测带宽 90~450 KB/s（抖动很大），一张原图 1 MB 要两三秒。
 一次性铺 24 张的后果不是「慢」，而是**每张都被摊薄，整片同时在转圈，观感像卡死**。
@@ -124,9 +135,10 @@ sh scripts/release.sh
 
 | 层 | 做法 | 参数 |
 |---|---|---|
-| 分批渲染 | 首屏只铺 3 排（桌面 12 张 / 手机 6 张），滚到板块底部再补下一批 | 后台「首屏行数」/「最多行数」 |
+| 分批渲染 | 首屏只铺 2 排（桌面 8 张 / 手机 4 张），滚到板块底部再补下一批 | 后台「首屏行数」默认 2 /「最多行数」默认 6 |
 | 懒加载 | 卡片进入视口前 400 px 才开始请求 | `site.js` 的 `wallIO` rootMargin |
 | 并发闸门 | 同时最多 4 张在途，其余排队 | `site.js` 的 `IMG_LIMIT` |
+| 缩略图 | 网格一律走 `img/t/`（长边 720），灯箱才取 2048 压缩图 | `content.json` 的 `thumb` 字段 |
 
 想加长首页就调「滚动加载后最多行数」（默认 6 排）；想更快就调小首屏行数。
 
@@ -175,16 +187,25 @@ sh /var/lib/tailscale/base-sync.sh --force  # 强制重推
 
 ---
 
-## 七、缩略图（提速的关键一步）
+## 七、缩略图与视频封面（提速的关键一步）
 
-原图长边 2048、单张 200 KB~1.2 MB。四列网格里每张只占 300 px 宽，下原图是纯浪费。
+压缩图长边 2048、单张 200 KB~1.2 MB。四列网格里每张只占 300 px 宽，下压缩图是纯浪费。
 
-`mkthumb.py` 在原图旁边生成 `img/t/` 缩略图（长边 720、q78、progressive），
-实测 **9.8 MB → 1.2 MB（12%）**，单张 890 KB → 103 KB。
+`mkthumb.py` 在压缩图旁边生成 `img/t/` 缩略图（长边 720、q78、progressive）。
+实测 562 张：**359.9 MB → 42.4 MB（12%）**，耗时 78.7 秒。
+
+`mkindex.py` 再把视频首帧封面写进清单（`p` 字段），前端 `<video preload="none" poster="...">`，
+**不点播放就不下载 mp4**。实测首页首屏流量 68.6 MB → 0.92 MB。
 
 ```bash
-sh /var/lib/tailscale/setup-nas.sh          # 增量，已生成的跳过
-sh /var/lib/tailscale/setup-nas.sh --full   # 全量重建（改过 --edge 参数后用）
+sh /tmp/nas-setup.sh        # 一条命令全跑（压缩图 → 视频 → 缩略图 → 清单 → 地址自愈）
+```
+
+只想重做缩略图时单独跑（输出比源新就跳过，`--force` / `--clean` 可全量重建）：
+
+```bash
+python3 /var/lib/tailscale/mkthumb.py /srv/pub --edge 720 --quality 78
+python3 /var/lib/tailscale/mkthumb.py /srv/pub --clean      # 清空 img/t/ 后重建
 ```
 
 它的行为：
@@ -245,18 +266,33 @@ sh /var/lib/tailscale/setup-nas.sh --full   # 全量重建（改过 --edge 参�
 
 忘了改过的口令：清掉本站的浏览器存储（localStorage），会回到默认口令。
 
-### 4. 视频元数据依赖 NAS 上重跑 mkindex.py
+### 4. `pub_img.py` 重跑会「删掉」源目录里没有的图（已用孤儿保留兜住）
+
+`img_index.json` 是**按源目录重建**的。有一张 `img_6531` 只活在 `/srv/pub/img`，
+原图早就没了 —— 不带保护地重跑一次，它就从清单里消失、站点上少一张，而且**没有任何报错**。
+
+现在 `pub_img.py` 默认把「源里没有、`img/` 里还在」的图按旧条目补回清单（`orphan` 计数会打出来）。
+只有确实想让它下线时才加 `--no-orphans`。判据：跑完 `img_index.json` 的 `count`
+不低于跑之前的 `index.json` 照片条数。
+
+### 5. 视频元数据依赖 NAS 上重跑 mkindex.py
 
 `mkindex.py` 用 ffprobe 读真实宽高与 `creation_time`（没有就退回文件修改时间），
 并处理手机竖拍的 rotation 标记。**必须先在 NAS 上重跑一次**，`index.json` 才会有这些字段；
 在那之前视频仍是 `0/0/空`，页面会在 `loadedmetadata` 后自己判断横竖兜底。
 
-### 5. NAS 没开机时站点什么样
+### 6. 后台跑脚本必须摘掉 stdin
+
+网页终端里 `cmd > log 2>&1 &` 启动的脚本仍连着 pty。ffmpeg 一旦读 stdin 就吃 `SIGTTIN`
+被停住，`ps` 里进程还在、CPU 时间 0、输出文件永远不出现 —— 看起来像「转码很慢」，
+其实是挂着。`nas-setup.sh` 开头有 `exec </dev/null`，自己写后台任务时也一样要加。
+
+### 7. NAS 没开机时站点什么样
 
 页面照常打开（文字、时间轴、随手记都在），图片位置显示手账风占位图
 （「照片在 NAS 上睡着了 / NAS OFFLINE」）。这是这条路线固有的代价。
 
-### 6. content.json 有 10 分钟缓存，改完可能看不到
+### 8. content.json 有 10 分钟缓存，改完可能看不到
 
 GitHub Pages 给 `data/content.json` 的 `Cache-Control` 是 `max-age=600`，浏览器 10 分钟内
 不会重新请求。覆盖并推送后想立刻看到效果：**Ctrl/Cmd + Shift + R 强制刷新**。
@@ -265,7 +301,7 @@ GitHub Pages 给 `data/content.json` 的 `Cache-Control` 是 `max-age=600`，浏
 > 实测回源要 2~30 秒，而命中缓存是几十毫秒。用 15 KB 的缓存命中换 2 秒的等待，不值。
 > 只有 110 字节的 `base.json` 是例外——隧道地址一变就必须尽快生效，所以它每次 bust。
 
-### 7. 内容真的拉不到时会有横幅
+### 9. 内容真的拉不到时会有横幅
 
 `site.js` 里 `content.json` 失败重试 3 次（400/800 ms 退避），`base.json` 重试 2 次。
 三次都失败才在页面顶部挂一条深色横幅，写明原因并给「重新加载」按钮。
@@ -281,12 +317,18 @@ python3 -m http.server 8791   # 本地起站
 ```
 
 - 三档视口 375 / 768 / 1440：无横向滚动、无 JS 报错、无零尺寸元素
-- 首页照片：首屏 3 排（桌面 12 / 手机 6），滚到底追加到「最多行数」
-- 灯箱：点开先出缩略图、随后换原图；左右切换、Esc 关闭正常
+- 首页照片：首屏 2 排（桌面 8 / 手机 4），滚到底追加到「最多行数」（默认 6）
+- 首页视频：3 个 `<video>` 都是 `preload="none"` 且有 poster，`networkidle` 前 **0 个 `.mp4` 请求**，总流量 < 3 MB
+- 照片墙：网格请求走 `/img/t/`（找不到就退回压缩图），**原图请求数应为 0**
+- 灯箱：点开先出缩略图、随后换压缩图；左右切换、Esc 关闭正常
 - 照片墙：地点筛选里数量之和 = 照片总数
 - 后台：改一个数字 → 直接点「保存并导出」→ 下载的 json 里能查到改动，
   且 `src` 仍是相对路径（不含 `https://`）、没有残留 `thumb` 字段
+- 前台六个页面都**没有** `admin.html` 链接
 - NAS 侧：`tail -f /var/lib/tailscale/base-sync.log` 能看到 `OK 地址未变`
+
+> 量 gallery 是否真的走缩略图时注意：卡片是懒加载，只扫 `src` 会得到 0。
+> 要么滚动触发，要么同时读 `data-src`；否则会把「懒加载未触发」误判成「缩略图没生效」。
 
 ---
 

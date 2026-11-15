@@ -10,6 +10,9 @@
 > - `content.json` 里存**相对路径**，运行时再拼 `base.json` 的地址
 > - 现在要看的是 `DEPLOY.md` 和 `README.md`
 >
+> **另**：`edgeone.json` 与 `cloud-functions/` 在本次合并后已彻底不用（项目不再涉及 EdgeOne），
+> 下面表格里提到它们的行都是**当时的事实快照**，不是现行配置，别照着建。
+>
 > 这份文件保留下来只为了两件事：记录当时的三处嵌入点为什么那样改、以及 md5 核对的方法。
 > 关于「页面不再读 `assets/photos/` 和 `config.js` 的 PHOTOS」这个提醒依然成立且更重要了。
 
