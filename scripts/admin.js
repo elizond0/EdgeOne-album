@@ -32,13 +32,40 @@
     toastTimer = setTimeout(() => (t.hidden = true), 2800);
   }
 
-  /* ---------- 登录（本地校验，不涉及服务器） ---------- */
+  /* ---------- 登录：SHA-256 口令校验（纯前端，不涉及服务器） ---------- */
+  // 说明：这是「本地编辑锁」，不是账号系统。哈希写在仓库里，懂技术的人可以暴破，
+  // 真正的保护依然是「链接不公开 + 禁止搜索引擎收录」。它挡的是随手翻到链接的人。
+  const DEFAULT_HASH = "efb5f59fb1ef3f212cc10d57d8519634d6342b0a3268818dd0aa5f89d96fd204"; // our-story-2025
+  const HASH_STORE = "album-admin-hash";
   const KEY_STORE = "album-admin-key";
+
+  async function sha256(text) {
+    const buf = new TextEncoder().encode(text);
+    const dig = await crypto.subtle.digest("SHA-256", buf);
+    return [...new Uint8Array(dig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  const currentHash = () => localStorage.getItem(HASH_STORE) || DEFAULT_HASH;
   function getKey() { return sessionStorage.getItem(KEY_STORE) || ""; }
 
-  $("#key-ok").addEventListener("click", () => {
+  $("#key-ok").addEventListener("click", async () => {
     const k = $("#key-input").value.trim();
-    if (k.length < 6) { $("#key-error").hidden = false; return; }
+    const err = $("#key-error");
+    if (k.length < 6) { err.textContent = "口令至少 6 位。"; err.hidden = false; return; }
+    let h;
+    try {
+      h = await sha256(k);
+    } catch (e) {
+      err.textContent = "当前页面无法校验口令（需要 https 或 localhost 打开）。";
+      err.hidden = false;
+      return;
+    }
+    if (h !== currentHash()) {
+      err.textContent = "口令不对。忘了的话清掉本站的浏览器存储，会回到默认口令。";
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
     sessionStorage.setItem(KEY_STORE, k);
     enter();
   });
@@ -164,6 +191,23 @@
     };
     markDirty();
     toast("已写入待保存内容，点右上角「保存」导出");
+  });
+
+  /* ---------- 修改口令 ---------- */
+  $("#save-key").addEventListener("click", async () => {
+    const nk = $("#new-key").value.trim();
+    const tip = $("#key-tip");
+    if (nk.length < 6) { toast("新口令至少 6 位", true); return; }
+    try {
+      localStorage.setItem(HASH_STORE, await sha256(nk));
+    } catch (e) {
+      toast("当前环境无法计算哈希，请在 https 或 localhost 下操作", true);
+      return;
+    }
+    sessionStorage.setItem(KEY_STORE, nk);
+    $("#new-key").value = "";
+    tip.textContent = "已改为新口令。忘掉的话清掉本站浏览器存储即可回到默认口令。";
+    toast("口令已修改（仅本机生效）");
   });
 
   /* ---------- 站点文本 ---------- */
@@ -387,6 +431,11 @@
   function buildContent() {
     syncFormToDb();
     const out = JSON.parse(JSON.stringify(db));
+    // 内存里的 src 已被 Site.attachBase() 拼成完整 URL。导出时必须还原成相对路径，
+    // 否则隧道地址会被重新写死进 content.json，下次换地址又得重建。
+    (out.photos || []).forEach((p) => { if (p.file) p.src = p.file; });
+    (out.videos || []).forEach((v) => { if (v.file) v.src = v.file; });
+    out.base = "";
     out.version = 1;
     out.builtAt = localToday();
     return out;

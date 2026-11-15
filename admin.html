@@ -24,9 +24,9 @@
     <section id="login-view" class="login">
       <div class="modal__card">
         <h2 class="modal__title">管理登录</h2>
-        <p class="modal__hint">输入本机管理口令（仅用于解锁这个页面，不会发送到任何服务器）。</p>
+        <p class="modal__hint">输入管理口令（只在本机校验 SHA-256 哈希，不会发送到任何服务器）。</p>
         <input class="modal__input" id="key-input" type="password" placeholder="管理口令（≥6 位）" autocomplete="off" />
-        <p class="modal__error" id="key-error" hidden>口令至少 6 位。</p>
+        <p class="modal__error" id="key-error" hidden></p>
         <button class="btn" id="key-ok" type="button">进入后台</button>
       </div>
     </section>
@@ -80,6 +80,16 @@
           </div>
           <p class="modal__hint" style="margin-top:10px">板块顺序（↑↓ 调整，排在前面的先显示）</p>
           <div class="home-order" id="home-order"></div>
+        </div>
+
+        <div class="panel__card">
+          <p class="modal__hint">
+            修改管理口令。它只存在这台电脑的浏览器里（localStorage），不会上传到任何地方；
+            换设备登录仍然用默认口令，除非在那边也改一次。
+          </p>
+          <label class="field">新口令（≥6 位）<input id="new-key" type="password" autocomplete="new-password" /></label>
+          <button class="btn" id="save-key" type="button">修改口令</button>
+          <p class="modal__hint" id="key-tip" style="margin-top:6px"></p>
         </div>
       </div>
 

@@ -65,7 +65,8 @@ git add data/content.json && git commit -m "chore: 更新照片" && git push
 
 全部在 `admin.html` 里做，**没有后端，所以「保存」= 导出文件**：
 
-1. 打开 `admin.html`，输本机管理口令（≥6 位，只存在浏览器 `sessionStorage`，不发往任何服务器）
+1. 打开 `admin.html`，输管理口令 —— **默认是 `our-story-2025`**，
+   进去后在「基本信息 → 修改口令」可改（只改本机浏览器，不同步其他设备）
 2. 改完点右上角 **「保存并导出 content.json」**
 3. 把下载的文件覆盖到 `data/content.json`，刷新页面即生效
 
@@ -107,7 +108,15 @@ git add data/content.json && git commit -m "chore: 更新照片" && git push
 DB 元数据与 NAS 文件靠文件名关联，规则是：去目录、转小写、剥掉 `(20260613-162348)` 这种后缀、去扩展名。
 两边文件名不一致就配不上，照片会变成「无标题」但**不会丢**（NAS 有就渲染）。
 
-### 4. 视频目前没有宽高和拍摄日期
+### 4. 后台口令只是「本地编辑锁」
+
+`admin.html` 的口令做 SHA-256 哈希比对，默认值写在 `scripts/admin.js` 的 `DEFAULT_HASH`。
+它挡的是「随手翻到链接的人」，不是真正的账号系统 —— 哈希在公开仓库里，懂技术的人可以暴破。
+真正的保护仍然是「链接不公开 + `noindex`」。
+
+忘了改过的口令：清掉本站的浏览器存储（localStorage），会回到默认口令。
+
+### 5. 视频目前没有宽高和拍摄日期
 
 NAS 清单里视频的 `w`/`h`/`d` 都是 0 或空。页面会在 `loadedmetadata` 后自己判断横竖：
 竖拍（1080×1920）改竖版卡片 + `object-fit: contain`，避免被裁成一条横缝。
