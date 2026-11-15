@@ -48,6 +48,41 @@ for f in mkthumb.py base-sync.sh mkindex.py pub_vid.sh boot.sh; do
 done
 chmod +x "$P/base-sync.sh" "$P/pub_vid.sh" 2>/dev/null || true
 
+# ── 1b. 原图目录文件名统一小写 ────────────────────────────────────────────
+# /srv/pub/img 的压缩图早已全小写，但 NAS 共享文件夹 Photos（→ /srv/photos）
+# 里还留着几百个 IMG_xxxx.JPG。只改目录项、文件内容一个字节都不动；
+# 已有同名小写文件时加 _1 后缀避让，绝不覆盖。
+say "=== 1b/6 统一 /srv/photos 文件名小写 ==="
+if [ -d /srv/photos ]; then
+  python3 - <<'PY'
+import os
+d = "/srv/photos"
+n = skip = conf = 0
+for b in sorted(os.listdir(d)):
+    p = os.path.join(d, b)
+    if not os.path.isfile(p):
+        continue
+    low = b.lower()
+    if low == b:
+        skip += 1
+        continue
+    t = os.path.join(d, low)
+    if os.path.exists(t):
+        stem, ext = os.path.splitext(low)
+        i = 1
+        while os.path.exists(os.path.join(d, "%s_%d%s" % (stem, i, ext))):
+            i += 1
+        t = os.path.join(d, "%s_%d%s" % (stem, i, ext))
+        conf += 1
+    os.rename(p, t)
+    n += 1
+print("  重命名 %d 个 / 已是小写 %d 个 / 冲突避让 %d 个" % (n, skip, conf))
+PY
+  say "  剩余含大写的文件名：$(ls -1 /srv/photos 2>/dev/null | grep -c '[A-Z]')"
+else
+  say "  /srv/photos 不存在，跳过"
+fi
+
 # ── 2. 照片缩略图 ──────────────────────────────────────────────────────────
 say "=== 2/6 生成缩略图（长边 720，q78）==="
 python3 "$P/mkthumb.py" "$OUT" --edge 720 --quality 78 2>&1 | tail -12
