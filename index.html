@@ -16,136 +16,168 @@
   <div class="atmosphere" aria-hidden="true"></div>
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- 顶部导航 -->
+  <!-- 顶部导航（后台入口只在页脚，导航保持纯净） -->
   <header class="nav">
-    <a class="nav__logo" href="#top"><span class="heart" aria-hidden="true">♥</span>我们的故事</a>
+    <a class="nav__logo" href="/"><span class="heart" aria-hidden="true">♥</span><span data-text="siteShort">我们的故事</span></a>
     <nav aria-label="页面导航">
       <ul class="nav__links">
-        <li><a href="#timeline">时间轴</a></li>
-        <li><a href="#wall">照片墙</a></li>
-        <li><a href="#videos">影像</a></li>
-        <li><a href="#" id="admin-btn" title="管理入口" aria-label="管理入口">🔒</a></li>
+        <li><a href="/" data-text="navHome">首页</a></li>
+        <li><a href="/timeline.html" data-text="navTimeline">时间轴</a></li>
+        <li><a href="/photos.html" data-text="navPhotos">照片墙</a></li>
+        <li><a href="/quotes.html" data-text="navQuotes">随手记</a></li>
+        <li><a href="/wishes.html" data-text="navWishes">心愿单</a></li>
+        <li><a href="/videos.html" data-text="navVideos">影像</a></li>
       </ul>
     </nav>
   </header>
 
   <main id="top">
-    <!-- 首屏 -->
+    <!-- 首屏（整屏高） -->
     <section class="hero">
       <div class="hero__copy">
-        <p class="hero__eyebrow">OUR LOVE STORY · EST. <span id="since-year">20XX</span></p>
-        <h1 class="hero__title">把喜欢的日子<br />一张张贴起来<em>，留给你</em></h1>
-        <p class="hero__sub">
-          这里收着我们的照片、走过的路和想说的话。
-          页面会一直更新下去——像我们的故事一样，未完待续。
-        </p>
+        <p class="hero__eyebrow"><span data-text="heroEyebrow">OUR LOVE STORY</span> · EST. <span id="since-year">20XX</span></p>
+        <h1 class="hero__title"><span data-text="heroTitle">把喜欢的日子</span><br /><em data-text="heroTitleEm">，留给你</em></h1>
+        <p class="hero__sub" data-text="heroSub">这里收着我们的照片、走过的路和想说的话。</p>
         <div class="days" role="status" aria-label="已相恋天数">
           <span class="days__num" id="days-count">—</span>
           <span class="days__label">天 · 在一起</span>
         </div>
+        <p class="hero__couple" id="couple-names" hidden></p>
       </div>
-      <!-- 首屏拍立得占位（换 hero.jpg 即可）-->
       <figure class="hero__photo polaroid reveal">
         <span class="tape tape--l" aria-hidden="true"></span>
         <span class="tape tape--r" aria-hidden="true"></span>
-        <img class="polaroid__img" src="assets/photos/photo-05.jpg" alt="首屏照片占位：请替换为你们的合照" />
+        <img class="polaroid__img" id="hero-img" alt="我们的合照" />
         <figcaption class="polaroid__caption">我们<span class="polaroid__date">SINCE <span id="since-date">20XX.XX.XX</span></span></figcaption>
       </figure>
     </section>
 
-    <!-- 恋爱时间轴（由 main.js 按 config.js / 云端内容渲染）-->
-    <section class="section" id="timeline">
+    <!-- 以下板块的顺序、条数、显隐全部由 data/content.json 的 meta.home 决定 -->
+    <section class="section" data-sec="timeline">
       <header class="section__head reveal">
-        <p class="section__eyebrow">CHAPTER 01</p>
-        <h2 class="section__title">时间轴</h2>
-        <p class="section__desc">从「你好」到「在一起」，每一个值得纪念的日子。管理员可在线编辑。</p>
+        <p class="section__eyebrow" data-eyebrow>CHAPTER 01</p>
+        <h2 class="section__title" data-text="secTimeline">时间轴</h2>
+        <p class="section__desc" data-text="secTimelineDesc"></p>
+        <a class="more-link" href="/timeline.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
-      <ol class="timeline" id="timeline-list"></ol>
+      <ol class="timeline" id="home-timeline"></ol>
     </section>
 
-    <!-- 照片墙 -->
-    <section class="section" id="wall">
+    <section class="section" data-sec="photos">
       <header class="section__head reveal">
-        <p class="section__eyebrow">CHAPTER 02</p>
-        <h2 class="section__title">照片墙</h2>
-        <p class="section__desc">点击照片可看大图，支持键盘 ← → 切换、Esc 关闭。</p>
-        <button class="btn btn--ghost admin-only" id="upload-photo-btn" type="button" hidden>＋ 上传照片</button>
-        <input id="upload-photo-input" type="file" accept="image/*" multiple hidden />
+        <p class="section__eyebrow" data-eyebrow>CHAPTER 02</p>
+        <h2 class="section__title" data-text="secPhotos">照片墙</h2>
+        <p class="section__desc" data-text="secPhotosDesc"></p>
+        <a class="more-link" href="/photos.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
-      <div class="wall" id="wall-grid">
-        <noscript>
-          <p class="section__desc">需要启用 JavaScript 才能浏览照片墙。</p>
-        </noscript>
-      </div>
+      <div class="preview-grid" id="home-photos"></div>
     </section>
 
-    <!-- 影像区 -->
-    <section class="section videos-band" id="videos">
+    <section class="section" data-sec="quotes">
       <header class="section__head reveal">
-        <p class="section__eyebrow">CHAPTER 03</p>
-        <h2 class="section__title">影像</h2>
-        <p class="section__desc">用照片剪出的短片都收在这里。</p>
-        <button class="btn btn--ghost admin-only" id="upload-video-btn" type="button" hidden>＋ 上传视频</button>
-        <input id="upload-video-input" type="file" accept="video/*" multiple hidden />
+        <p class="section__eyebrow" data-eyebrow>CHAPTER 03</p>
+        <h2 class="section__title" data-text="secQuotes">随手记</h2>
+        <p class="section__desc" data-text="secQuotesDesc"></p>
+        <a class="more-link" href="/quotes.html"><span data-text="moreLabel">查看全部</span> →</a>
       </header>
-      <div class="videos" id="videos-grid"></div>
+      <div class="quotes quotes--home" id="home-quotes"></div>
+    </section>
+
+    <section class="section" data-sec="wishes">
+      <header class="section__head reveal">
+        <p class="section__eyebrow" data-eyebrow>CHAPTER 04</p>
+        <h2 class="section__title" data-text="secWishes">心愿单</h2>
+        <p class="section__desc" data-text="secWishesDesc"></p>
+        <a class="more-link" href="/wishes.html"><span data-text="moreLabel">查看全部</span> →</a>
+      </header>
+      <div class="wishes wishes--home" id="home-wishes"></div>
+    </section>
+
+    <section class="section videos-band" data-sec="videos">
+      <header class="section__head reveal">
+        <p class="section__eyebrow" data-eyebrow>CHAPTER 05</p>
+        <h2 class="section__title" data-text="secVideos">影像</h2>
+        <p class="section__desc" data-text="secVideosDesc"></p>
+        <a class="more-link" href="/videos.html"><span data-text="moreLabel">查看全部</span> →</a>
+      </header>
+      <div class="videos" id="home-videos"></div>
     </section>
   </main>
 
   <footer class="footer">
-    <p>为了我们的纪念日，页面会一直更新下去 <span class="heart" aria-hidden="true">♥</span></p>
-    <p class="form__hint">私密分享页面 · 已设置禁止搜索引擎收录</p>
+    <p><span data-text="footerNote">为了我们的纪念日，页面会一直更新下去</span> <span class="heart" aria-hidden="true">♥</span></p>
+    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="/admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
   </footer>
 
-  <!-- 管理密钥弹窗 -->
-  <div class="modal" id="token-modal" role="dialog" aria-modal="true" aria-label="管理登录" hidden>
-    <div class="modal__card">
-      <h3 class="modal__title">管理登录</h3>
-      <p class="modal__hint" id="token-hint">输入管理密钥后可上传照片视频、编辑内容。首次使用时，你输入的密钥将被设为管理密钥（至少 6 位）。</p>
-      <input class="modal__input" id="token-input" type="password" placeholder="管理密钥" autocomplete="off" />
-      <p class="modal__error" id="token-error" hidden>密钥不对，再想想。</p>
-      <div class="modal__actions">
-        <button class="btn btn--ghost" id="token-cancel" type="button">取消</button>
-        <button class="btn" id="token-ok" type="button">解锁</button>
-      </div>
-    </div>
-  </div>
+  <script src="scripts/site.js"></script>
+  <script>
+    document.addEventListener("site:ready", function (e) {
+      const db = e.detail || {};
+      const cfg = Site.homeCfg();
+      const main = document.querySelector("main");
 
-  <!-- 内容编辑面板 -->
-  <div class="modal" id="edit-modal" role="dialog" aria-modal="true" aria-label="编辑站点内容" hidden>
-    <div class="modal__card modal__card--wide">
-      <h3 class="modal__title">编辑内容</h3>
-      <div class="edit-scroll">
-        <div class="field">
-          <label for="edit-anniversary">纪念日（相恋天数按此计算）</label>
-          <input id="edit-anniversary" type="date" />
-        </div>
-        <h4 class="edit-sub">时间轴节点</h4>
-        <div id="edit-timeline"></div>
-        <button class="btn btn--ghost" id="edit-add" type="button">＋ 添加节点</button>
-      </div>
-      <p class="modal__error" id="edit-error" hidden></p>
-      <div class="modal__actions">
-        <button class="btn btn--ghost" id="edit-cancel" type="button">取消</button>
-        <button class="btn" id="edit-save" type="button">保存到云端</button>
-      </div>
-    </div>
-  </div>
+      /* 首屏照片：用 meta.hero（文件名）去 NAS 清单里找 */
+      const heroFile = (db.meta && db.meta.hero) || "";
+      const heroPhoto =
+        db.photos.find((p) => p.file.split("/").pop() === heroFile) ||
+        db.photos.find((p) => p.featured) ||
+        db.photos[0];
+      if (heroPhoto) {
+        const im = document.getElementById("hero-img");
+        im.src = heroPhoto.src;
+        im.alt = heroPhoto.title || "我们的合照";
+      }
 
-  <!-- 灯箱 -->
-  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="查看大图" hidden>
-    <button class="lightbox__btn lightbox__close" id="lb-close" aria-label="关闭">✕</button>
-    <button class="lightbox__btn lightbox__prev" id="lb-prev" aria-label="上一张">←</button>
-    <img class="lightbox__img" id="lb-img" alt="" />
-    <button class="lightbox__btn lightbox__next" id="lb-next" aria-label="下一张">→</button>
-    <p class="lightbox__caption" id="lb-caption"></p>
-  </div>
+      /* ---------- 板块顺序（后台可调）+ CHAPTER 编号重排 ---------- */
+      const secOf = {};
+      main.querySelectorAll("[data-sec]").forEach((s) => (secOf[s.dataset.sec] = s));
+      const order = cfg.order.length ? cfg.order : ["timeline", "photos", "quotes", "wishes", "videos"];
+      order.forEach((key, i) => {
+        const s = secOf[key];
+        if (!s) return;
+        main.appendChild(s); // 依次移到末尾 = 按 order 排序（footer 不在 main 内，不能用 insertBefore）
+        const eb = s.querySelector("[data-eyebrow]");
+        if (eb) eb.textContent = "CHAPTER 0" + (i + 1);
+        if (key === "videos") {
+          const empty = !(db.videos || []).length;
+          if (cfg.showVideos === "hide" || (cfg.showVideos === "auto" && empty)) s.remove();
+        }
+      });
 
-  <!-- 顺序很重要：云层 API → 配置 → 交互 -->
-  <script src="scripts/api.js"></script>
-  <script src="scripts/config.js"></script>
-  <script src="scripts/nas.js"></script>
-  <script src="scripts/main.js"></script>
+      /* ---------- 时间轴：前 N 条 ---------- */
+      Site.renderTimeline(document.getElementById("home-timeline"), (db.timeline || []).slice(0, cfg.timelineCount));
+
+      /* ---------- 照片墙：固定行数，不截半（桌面 4 列 / 移动 2 列） ---------- */
+      const grid = document.getElementById("home-photos");
+      const perRow = window.matchMedia("(max-width: 760px)").matches ? 2 : 4;
+      const all = Site.visiblePhotos();
+      all.slice(0, cfg.photoRows * perRow).forEach((p, i) => grid.appendChild(Site.photoCard(p, i, all)));
+
+      /* ---------- 随手记：行数（桌面一行 2 张） ---------- */
+      Site.renderQuotes(document.getElementById("home-quotes"), (db.quotes || []).slice(0, cfg.quoteRows * 2));
+
+      /* ---------- 心愿单：todo 两栏，条数可设 ---------- */
+      Site.renderWishes(document.getElementById("home-wishes"), (db.wishes || []).slice(0, cfg.wishCount));
+
+      /* ---------- 影像 ---------- */
+      const vg = document.getElementById("home-videos");
+      if (vg) {
+        if ((db.videos || []).length) Site.renderVideos(vg, db.videos.slice(0, 3));
+        else vg.innerHTML = '<p class="section__desc" style="color:#b8b1a2">第一支短片剪好后，会在这里上映。</p>';
+      }
+
+      /* ---------- 幻灯片式渐入渐出（兜底接管） ---------- */
+      Site.initSlides(main);
+    });
+
+    /* 内容没加载成功时也要让人能看到页面，别停在全透明 */
+    setTimeout(function () {
+      document.querySelectorAll(".reveal:not(.in)").forEach(function (n) {
+        var r = n.getBoundingClientRect();
+        if (r.top < window.innerHeight + 400) n.classList.add("in");
+      });
+    }, 3000);
+  </script>
 
   <!-- 字体延后注入：等页面内容（照片墙）先渲染完，再不慌不忙加载手写体 -->
   <script>
@@ -159,9 +191,7 @@
     });
   </script>
 
-  <!-- 兜底：.reveal 依赖 IntersectionObserver 才会从透明变可见。
-       某些环境（无头浏览器、部分内嵌 WebView）里该观察器不回调，
-       整页照片会一直停在 opacity:0 看起来像空白。这里按视口位置兜底补 .in。 -->
+  <!-- 兜底：.reveal 依赖 IntersectionObserver 才会从透明变可见 -->
   <script>
     (function () {
       function tick() {
@@ -177,5 +207,6 @@
       window.addEventListener("load", function () { setTimeout(tick, 200); });
     })();
   </script>
+  <script>Site.boot();</script>
 </body>
 </html>

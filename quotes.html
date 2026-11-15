@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>随手记 · 我们的故事</title>
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="nav__logo" href="/"><span class="heart" aria-hidden="true">♥</span><span data-text="siteShort">我们的故事</span></a>
+    <nav aria-label="页面导航">
+      <ul class="nav__links">
+        <li><a href="/" data-text="navHome">首页</a></li>
+        <li><a href="/timeline.html" data-text="navTimeline">时间轴</a></li>
+        <li><a href="/photos.html" data-text="navPhotos">照片墙</a></li>
+        <li><a href="/quotes.html" data-text="navQuotes">随手记</a></li>
+        <li><a href="/wishes.html" data-text="navWishes">心愿单</a></li>
+        <li><a href="/videos.html" data-text="navVideos">影像</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="subpage">
+    <section class="section">
+      <header class="section__head reveal">
+        <p class="section__eyebrow">NOTES</p>
+        <h1 class="section__title" data-text="secQuotes">随手记</h1>
+        <p class="section__desc" data-text="secQuotesDesc"></p>
+      </header>
+      <div class="quotes" id="page-quotes"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p><span data-text="footerNote">为了我们的纪念日，页面会一直更新下去</span> <span class="heart" aria-hidden="true">♥</span></p>
+    <p class="form__hint"><span data-text="footerSub">私密分享页面</span> · <a href="/admin.html" style="color:inherit" data-text="navAdmin">后台</a></p>
+  </footer>
+
+  <script src="scripts/site.js"></script>
+  <script src="scripts/page-quotes.js"></script>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = "assets/fonts/wenkai.css";
+        document.head.appendChild(l);
+      }, 800);
+    });
+  </script>
+  <script>Site.boot();</script>
+</body>
+</html>

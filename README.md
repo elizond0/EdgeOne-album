@@ -1,51 +1,73 @@
-# 我们的故事 · 恋爱纪念册（综合版静态页）
+# 我们的故事 · 恋爱纪念册
 
-纸质手账 × 拍立得风格的恋爱纪念单页：相恋天数、时间轴、照片墙（灯箱 + 本机上传）、影像区（本机上传）。
+纸质手账 × 拍立得风格的私密纪念站：相恋天数、时间轴、照片墙（灯箱 + 地点筛选）、
+随手记、心愿清单、影像。多页结构，手机与电脑各一套排版。
 
-## 怎么更新内容（不用懂代码）
+**照片和视频不放在仓库里**，全部来自家里 NAS 的直链（见 `DEPLOY.md`）。
+仓库里只有页面、样式、脚本和一份 `data/content.json`（文案 + 媒体索引）。
 
-| 想改什么 | 去哪里改 |
+## 页面
+
+| 文件 | 内容 |
 |---|---|
-| 纪念日（相恋天数自动算） | `scripts/config.js` → `SITE.anniversary` |
-| 照片 | ① 页面上点「＋ 上传照片」（仅本设备浏览器可见）；② 想让所有人看到：把照片放进 `assets/photos/`，在 `scripts/config.js` 的 `PHOTOS` 里登记 |
-| 视频 | ① 页面上点「＋ 上传视频」（仅本设备可见）；② 正式收录：放入 `assets/videos/` 并在 `VIDEOS` 里登记 |
-| 时间轴节点 | `index.html` 搜索 `timeline__item`，复制一段改文字即可 |
-| 首屏合照 | 替换 `assets/photos/photo-05.jpg`，或改 `index.html` 里 hero 图片的 `src` |
+| `index.html` | 首页：首屏 + 五个板块（时间轴 / 照片墙 / 随手记 / 心愿单 / 影像），条数与顺序可在后台调 |
+| `timeline.html` | 时间轴完整版 |
+| `photos.html` | 照片墙完整版 + 地点筛选 + 灯箱 |
+| `quotes.html` | 随手记 |
+| `wishes.html` | 心愿清单（待解锁 / 已解锁两栏） |
+| `videos.html` | 影像 |
+| `admin.html` | 管理后台（本机口令解锁，只做编辑 + 导出，不写服务器） |
 
-## 上传功能的边界（重要）
+前端页面**没有任何上传入口**，纯展示；所有编辑都收在 `admin.html` 里。
 
-页面是纯静态站、没有服务器，所以「上传」的照片/视频保存在**上传者自己浏览器的 IndexedDB** 里：
+## 改内容的正确姿势
 
-- 刷新、重启浏览器都不会丢（除非主动清除浏览器数据）；
-- 换设备、换浏览器、其他访客都看不到；
-- 想把内容永久收录进站点（所有人可见），仍需把原文件发给维护者，由维护者放入 `assets/` 并登记到 `config.js` 后重新发布。
+1. 打开 `admin.html`，输本机管理口令
+2. 改完点 **「保存并导出 content.json」**
+3. 覆盖仓库里的 `data/content.json`，刷新页面即生效
+
+加照片不走后台：把文件放进 NAS 的照片目录，重跑媒体清单，再按上面第 3 步覆盖。
+详细流程和注意事项见 **`DEPLOY.md`**。
 
 ## 本地预览
 
 ```bash
 cd love-album
-python3 -m http.server 8080
-# 浏览器打开 http://localhost:8080
+python3 -m http.server 8791
+# http://127.0.0.1:8791
 ```
 
-直接双击 `index.html` 也能打开（图片字体走 CDN 时需联网）。
-
-## 隐私说明
-
-- 页面已加 `<meta name="robots" content="noindex, nofollow">`，禁止搜索引擎收录；
-- 所有素材都在本地文件里，不经过任何第三方图床；
-- 分享方式：把整个文件夹静态部署后，只把链接发给想给的人看。
+必须用 http 打开（页面要 `fetch data/content.json`，`file://` 会被浏览器拦）。
+照片能否显示取决于 `base.json` 里的 NAS 隧道地址是否还活着。
 
 ## 目录结构
 
 ```
 love-album/
-├── index.html            # 页面结构（时间轴文字也在这里改）
-├── styles/               # tokens / base / components 三层样式
+├── index.html  timeline.html  photos.html  quotes.html  wishes.html  videos.html
+├── admin.html                 # 后台（导出 content.json）
+├── base.json                  # 当前 NAS 隧道地址（由 pub_gh.sh 自动更新）
+├── data/content.json          # ★ 唯一内容源
+├── styles/
+│   ├── tokens.css             # 颜色 / 字号 / 间距变量
+│   ├── base.css               # 重置与版式基础
+│   ├── components.css         # 全部组件样式（含手机断点）
+│   └── admin.css              # 后台专用
 ├── scripts/
-│   ├── config.js         # ★ 所有内容配置都在这里
-│   └── main.js           # 渲染与交互逻辑（一般不用动）
-└── assets/
-    ├── photos/           # 照片（当前为占位图 photo-01~12.jpg）
-    └── videos/           # 视频 + 默认封面 poster.jpg
+│   ├── site.js                # ★ 内容层 + 渲染层，对外 window.Site
+│   ├── page-*.js              # 五个子页面的渲染入口
+│   ├── admin.js               # 后台逻辑
+│   ├── build_content.py       # 旧库 db.json + NAS 清单 → data/content.json
+│   └── gen_pages.py           # 用统一模板生成 5 个子页面
+├── deploy-scripts/
+│   ├── boot.sh                # NAS 开机：Caddy + 隧道 + 发布地址
+│   └── pub_gh.sh              # 把隧道地址推回仓库 base.json
+└── assets/fonts               # 自托管字体（霞鹜文楷子集，延后注入不阻塞渲染）
 ```
+
+## 隐私
+
+- 全站 `<meta name="robots" content="noindex, nofollow">`，不进搜索引擎
+- 素材直连家里 NAS，不经过任何第三方图床
+- 后台口令只存浏览器 `sessionStorage`，不上传；它只是一道「别人拿不到你电脑就改不了」的本地锁，
+  真正的保护是「链接不公开 + 禁止收录」

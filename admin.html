@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>管理后台 · 我们的故事</title>
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/admin.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="nav__logo" href="/"><span class="heart" aria-hidden="true">♥</span>管理后台</a>
+    <nav><ul class="nav__links">
+      <li><a href="/">← 返回纪念册</a></li>
+      <li><a href="#" id="logout-btn" hidden>退出管理</a></li>
+    </ul></nav>
+  </header>
+
+  <main class="admin">
+    <!-- 登录 -->
+    <section id="login-view" class="login">
+      <div class="modal__card">
+        <h2 class="modal__title">管理登录</h2>
+        <p class="modal__hint">输入本机管理口令（仅用于解锁这个页面，不会发送到任何服务器）。</p>
+        <input class="modal__input" id="key-input" type="password" placeholder="管理口令（≥6 位）" autocomplete="off" />
+        <p class="modal__error" id="key-error" hidden>口令至少 6 位。</p>
+        <button class="btn" id="key-ok" type="button">进入后台</button>
+      </div>
+    </section>
+
+    <!-- 后台主体 -->
+    <section id="panel-view" hidden>
+      <div class="admin-bar">
+        <nav class="tabs" id="tabs">
+          <button class="tab is-active" data-tab="basic" type="button">基本信息</button>
+          <button class="tab" data-tab="texts" type="button">站点文本</button>
+          <button class="tab" data-tab="timeline" type="button">时间轴</button>
+          <button class="tab" data-tab="quotes" type="button">随手记</button>
+          <button class="tab" data-tab="wishes" type="button">愿望清单</button>
+          <button class="tab" data-tab="events" type="button">事件</button>
+          <button class="tab" data-tab="photos" type="button">照片库</button>
+        </nav>
+        <div class="admin-bar__right">
+          <span class="dirty-tip" id="dirty-tip" hidden>有未导出的改动</span>
+          <button class="btn" id="save-all" type="button">保存并导出 content.json</button>
+        </div>
+      </div>
+
+      <p class="modal__hint admin-note">
+        静态站没有可写的后端，所以这里的「保存」是<b>生成一份 content.json 给你下载</b>：
+        把它放到 NAS 上站点对应的目录（与 <code>index.json</code> 同级），刷新页面即生效。
+        照片文件本身不需要在这里上传——直接把照片放进 NAS 的照片目录即可。
+      </p>
+
+      <!-- 基本信息 -->
+      <div class="panel" id="panel-basic">
+        <div class="panel__card">
+          <label class="field">纪念日<input id="f-anniversary" type="date" /></label>
+          <label class="field">你的昵称<input id="f-couple-a" type="text" maxlength="20" /></label>
+          <label class="field">TA 的昵称<input id="f-couple-b" type="text" maxlength="20" /></label>
+          <label class="field">首屏照片文件名<input id="f-hero" type="text" placeholder="如 IMG_6914.jpg" /></label>
+          <button class="btn" id="save-basic" type="button">保存基本信息</button>
+        </div>
+
+        <div class="panel__card">
+          <p class="modal__hint">首页板块设置：各板块显示数量、顺序与影像板块的显隐。</p>
+          <div class="home-cfg-grid">
+            <label class="field">时间轴条数<input id="f-h-tl" type="number" min="1" max="20" /></label>
+            <label class="field">照片墙行数<input id="f-h-pr" type="number" min="1" max="6" /></label>
+            <label class="field">随手记行数<input id="f-h-qr" type="number" min="1" max="6" /></label>
+            <label class="field">心愿条数<input id="f-h-wc" type="number" min="2" max="30" /></label>
+            <label class="field">影像板块<select id="f-h-videos">
+              <option value="auto">自动（有内容才显示）</option>
+              <option value="show">始终显示</option>
+              <option value="hide">隐藏</option>
+            </select></label>
+          </div>
+          <p class="modal__hint" style="margin-top:10px">板块顺序（↑↓ 调整，排在前面的先显示）</p>
+          <div class="home-order" id="home-order"></div>
+        </div>
+      </div>
+
+      <!-- 站点文本 -->
+      <div class="panel" id="panel-texts" hidden>
+        <div class="panel__card">
+          <p class="modal__hint">这些文字会替换页面里对应的位置，留空则用默认文案。</p>
+          <div class="text-grid" id="text-list"></div>
+          <button class="btn" id="save-texts" type="button">保存文本</button>
+        </div>
+      </div>
+
+      <!-- 通用列表：时间轴 / 随手记 / 愿望 / 事件 -->
+      <div class="panel" id="panel-timeline" hidden>
+        <div class="panel__card">
+          <div class="list" data-list="timeline" id="list-timeline"></div>
+          <div class="panel__acts">
+            <button class="btn btn--ghost" data-add="timeline" type="button">＋ 添加节点</button>
+            <button class="btn" data-save-list="timeline" type="button">保存时间轴</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-quotes" hidden>
+        <div class="panel__card">
+          <div class="list" data-list="quotes" id="list-quotes"></div>
+          <div class="panel__acts">
+            <button class="btn btn--ghost" data-add="quotes" type="button">＋ 添加随手记</button>
+            <button class="btn" data-save-list="quotes" type="button">保存随手记</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-wishes" hidden>
+        <div class="panel__card">
+          <div class="list" data-list="wishes" id="list-wishes"></div>
+          <div class="panel__acts">
+            <button class="btn btn--ghost" data-add="wishes" type="button">＋ 添加愿望</button>
+            <button class="btn" data-save-list="wishes" type="button">保存愿望清单</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-events" hidden>
+        <div class="panel__card">
+          <p class="modal__hint">事件用来把同一次出行的照片归到一组。</p>
+          <div class="list" data-list="events" id="list-events"></div>
+          <div class="panel__acts">
+            <button class="btn btn--ghost" data-add="events" type="button">＋ 添加事件</button>
+            <button class="btn" data-save-list="events" type="button">保存事件</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 照片库 -->
+      <div class="panel" id="panel-photos" hidden>
+        <div class="panel__card">
+          <div class="media-toolbar">
+            <input id="photo-search" type="search" placeholder="搜索文件名 / 描述 / 地点" />
+            <select id="photo-view" aria-label="视图">
+              <option value="list">列表视图</option>
+              <option value="group">地点分组</option>
+            </select>
+            <span class="modal__hint" id="photo-stat"></span>
+          </div>
+          <p class="modal__hint">
+            照片来自 NAS，这里只改描述与归类，不会动文件本身。
+            新增照片请直接把文件放进 NAS 的照片目录，再跑一次清单生成即可。
+          </p>
+          <div class="photo-list" id="photo-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <p class="toast" id="toast" hidden></p>
+  </main>
+
+  <script src="scripts/site.js"></script>
+  <script src="scripts/admin.js"></script>
+</body>
+</html>
