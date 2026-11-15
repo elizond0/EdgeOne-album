@@ -97,7 +97,11 @@ PAGES = [
           </select>
         </div>
 """,
-        body='      <div class="wall" id="wall"></div>\n      <p class="form__hint" id="wall-count"></p>',
+        body=('      <div class="wall" id="wall"></div>\n'
+              '      <div class="wall-more" id="wall-more" hidden>\n'
+              '        <button type="button" class="preview-more__btn" data-wall-more>继续加载 ↓</button>\n'
+              '      </div>\n'
+              '      <p class="form__hint" id="wall-count"></p>'),
     ),
     dict(
         page="quotes", file="quotes.html", title="随手记", eyebrow="NOTES",

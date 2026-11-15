@@ -632,6 +632,19 @@
     });
   };
 
+  /* ---------- 子页面配置（后台可调，缺省有默认值） ---------- */
+  // 首页只铺 N 排，子页面是「全部内容」，但列数和每组条数也该能调——
+  // 手机上看 3 列拍立得就太挤，愿望太多也会翻很久。
+  Site.pageCfg = function () {
+    const p = (Site.db && Site.db.meta && Site.db.meta.pages) || {};
+    return {
+      photosCols: Math.min(4, Math.max(1, +p.photosCols || 3)),   // 照片墙页列数
+      quotesCols: Math.min(3, Math.max(1, +p.quotesCols || 2)),   // 随手记页列数
+      wishLimit: Math.max(0, +p.wishLimit || 0),                  // 心愿单每组条数，0 = 全部
+      photosPerBatch: Math.min(120, Math.max(12, +p.photosPerBatch || 48)),
+    };
+  };
+
   /* ---------- 首页配置（后台可调，缺省有默认值） ---------- */
   Site.homeCfg = function () {
     const h = (Site.db && Site.db.meta && Site.db.meta.home) || {};

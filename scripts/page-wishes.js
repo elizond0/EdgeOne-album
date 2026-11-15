@@ -3,6 +3,7 @@
   "use strict";
   document.addEventListener("site:ready", function (e) {
     const db = e.detail || {};
-    Site.renderWishes(document.getElementById("page-wishes"), db.wishes || [], { limit: 0 });
+    const cfg = Site.pageCfg();
+    Site.renderWishes(document.getElementById("page-wishes"), db.wishes || [], { limit: cfg.wishLimit });
   });
 })();

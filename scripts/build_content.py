@@ -32,7 +32,7 @@ DEFAULT_OUT = ROOT / "data" / "content.json"
 
 # 旧库（应用版 db.json）里没有、只在 NAS 路线里才有的配置项。
 # 重跑本脚本时要从现有 content.json 里原样带过来，否则后台改过的首页配置会被抹掉。
-CARRY_KEYS = ("home", "texts")
+CARRY_KEYS = ("home", "texts", "pages")
 
 
 def carry_over_meta():
@@ -163,6 +163,8 @@ def main():
     meta = db.get("meta", {})
     # 首页配置：旧库里没有就用现有 content.json 的（后台里改的值不能因为重跑脚本丢掉）
     carried = carry_over_meta()
+    pages = dict(carried.get("pages") or {})
+    pages.update(meta.get("pages") or {})
     home = dict(carried.get("home") or {})
     home.update(meta.get("home") or {})
     # 站点文本同理：后台改过的（content.json 里）优先于 seed 里的基线
@@ -178,6 +180,7 @@ def main():
             "hero": meta.get("hero", ""),
             "texts": texts,
             "home": home,
+            "pages": pages,
         },
         "events": db.get("events", []),
         "timeline": db.get("timeline", []),

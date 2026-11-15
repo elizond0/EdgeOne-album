@@ -3,6 +3,9 @@
   "use strict";
   document.addEventListener("site:ready", function (e) {
     const db = e.detail || {};
-    Site.renderQuotes(document.getElementById("page-quotes"), db.quotes || []);
+    const el = document.getElementById("page-quotes");
+    const cfg = Site.pageCfg();
+    if (el && cfg.quotesCols) el.dataset.cols = String(cfg.quotesCols);
+    Site.renderQuotes(el, db.quotes || []);
   });
 })();

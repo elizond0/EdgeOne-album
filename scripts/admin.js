@@ -121,6 +121,15 @@
     $("#f-h-wc").value = h.wishCount || 8;
     $("#f-h-videos").value = h.showVideos || "auto";
     renderHomeOrder();
+    renderPageCfg();
+  }
+
+  function renderPageCfg() {
+    const p = (db.meta && db.meta.pages) || {};
+    if ($("#f-p-cols")) $("#f-p-cols").value = p.photosCols || 3;
+    if ($("#f-p-batch")) $("#f-p-batch").value = p.photosPerBatch || 48;
+    if ($("#f-q-cols")) $("#f-q-cols").value = p.quotesCols || 2;
+    if ($("#f-w-limit")) $("#f-w-limit").value = p.wishLimit == null ? 0 : p.wishLimit;
   }
 
   function renderHomeOrder() {
@@ -426,6 +435,20 @@
           .filter(Boolean),
       };
     }
+    if ($("#f-p-cols")) {
+      const pick = (sel, def, min, max) => {
+        const el = $(sel);
+        const v = el ? Math.round(+el.value) : NaN;
+        return Math.min(max, Math.max(min, Number.isFinite(v) ? v : def));
+      };
+      db.meta.pages = {
+        photosCols: pick("#f-p-cols", 3, 1, 4),
+        photosPerBatch: pick("#f-p-batch", 48, 12, 120),
+        quotesCols: pick("#f-q-cols", 2, 1, 3),
+        wishLimit: pick("#f-w-limit", 0, 0, 30),
+      };
+    }
+
     const tk = document.querySelectorAll("[data-tk]");
     if (tk.length) {
       const t = { ...((db.meta && db.meta.texts) || {}) };
