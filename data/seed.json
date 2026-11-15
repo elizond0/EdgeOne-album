@@ -8,7 +8,7 @@
   },
   "hero": "IMG_6914.jpg",
   "texts": {
-   "siteTitle": "我们的故事 · 纪念册",
+   "siteTitle": "我们的故事 · Album",
    "navHome": "首页",
    "navTimeline": "时间轴",
    "navPhotos": "照片墙",
@@ -33,7 +33,8 @@
    "secVideosDesc": "手机里攒下的小片段，原样放着，没剪。",
    "footerNote": "为了我们的纪念日，页面会一直更新下去",
    "footerSub": "私密分享页面 · 已设置禁止搜索引擎收录",
-   "moreLabel": "查看全部"
+   "moreLabel": "查看全部",
+   "siteShort": "Album"
   },
   "home": {
    "timelineCount": 5,

@@ -73,6 +73,20 @@ sh      /var/lib/tailscale/setup-nas.sh
 > ```
 > 它会读 `base.json` 的地址去拉 NAS 清单，再与 `data/seed.json` 按文件名合并。
 
+### 发布
+
+```bash
+sh scripts/release.sh
+```
+
+做三件事：重新生成 5 个子页面（顺带把页脚版本时间戳刷成当前时间）→ 提交 →
+推送。**每次上线都跑这条**，页脚时间才等于这次部署的时间。
+
+站点地址：<https://elizond0.github.io/album/>
+
+> 仓库从 `EdgeOne-album` 改名成 `album` 了，旧地址 `/EdgeOne-album/` 已经 404，
+> 之前分享出去的链接要换成新的。GitHub Pages 不会为改名的仓库保留旧路径重定向。
+
 ---
 
 ## 四、日常更新：改文案 / 调首页
