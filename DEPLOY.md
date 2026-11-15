@@ -53,6 +53,10 @@ git add data/content.json && git commit -m "chore: 更新照片" && git push
 第 2 步的清单生成器把每个文件的相对路径、拍摄日期、宽高、类型（photo/video）、
 字节数写进 `index.json`。**没有它新照片不会出现在站点里。**
 
+> 清单生成器是 `deploy-scripts/mkindex.py`，视频的拍摄日期与宽高由 `ffprobe` 读取
+> （需要在 NAS 上装 ffmpeg；没装也能跑，只是视频会退化成「无日期、靠浏览器判竖横」）。
+> 改完脚本记得在 NAS 上重跑一次，`index.json` 才会带上视频元数据。
+
 > 本地重建 content.json（不需要 NAS 在线也能做，只要 `index.json` 拉得到）：
 > ```bash
 > python3 scripts/build_content.py
@@ -116,11 +120,13 @@ DB 元数据与 NAS 文件靠文件名关联，规则是：去目录、转小写
 
 忘了改过的口令：清掉本站的浏览器存储（localStorage），会回到默认口令。
 
-### 5. 视频目前没有宽高和拍摄日期
+### 5. 视频元数据依赖 NAS 上重跑 mkindex.py
 
-NAS 清单里视频的 `w`/`h`/`d` 都是 0 或空。页面会在 `loadedmetadata` 后自己判断横竖：
-竖拍（1080×1920）改竖版卡片 + `object-fit: contain`，避免被裁成一条横缝。
-若以后清单生成器补上宽高和日期，把下方标题改成日期显示会自动生效。
+`mkindex.py` 现在用 ffprobe 读真实宽高与 `creation_time`（没有就退回文件修改时间），
+并处理手机竖拍的 rotation 标记。**但必须先在 NAS 上重跑一次它**，`index.json` 才会有这些字段；
+在那之前视频仍是 `0/0/空`，页面会在 `loadedmetadata` 后自己判断横竖兜底。
+
+字段一旦有了，视频卡片标题就从「片段」变成拍摄日期，竖横也在渲染时立刻确定，不用等加载。
 
 ---
 
