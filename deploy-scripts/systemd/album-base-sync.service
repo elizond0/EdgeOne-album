@@ -1,0 +1,16 @@
+[Unit]
+Description=Album · 同步 cloudflared 隧道地址到 GitHub base.json
+Documentation=file:/opt/album/README.md
+# 等网络真的通（quick tunnel 要出网），别一开机就去跑
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=ALBUM_HOME=/opt/album
+Environment=ALBUM_REPO=elizond0/EdgeOne-album
+Environment=ALBUM_PAGES=https://elizond0.github.io/EdgeOne-album
+ExecStart=/bin/sh /opt/album/base-sync.sh
+# 失败不算灾难：下一轮 timer 会再来
+SuccessExitStatus=0 1
+TimeoutStartSec=180

@@ -16,8 +16,12 @@ ip = os.path.join(OUT, "img_index.json")
 if os.path.exists(ip):
     with open(ip, encoding="utf-8") as f:
         for i in json.load(f)["items"]:
-            items.append({"f": "img/" + i["f"], "d": i.get("d", ""),
-                          "w": i.get("w", 0), "h": i.get("h", 0), "k": "photo"})
+            name = i["f"]
+            # 网格用缩略图 img/t/<name>，存在才带上（没跑 mkthumb.py 时前端自动退回原图）
+            thumb = "img/t/" + name
+            items.append({"f": "img/" + name, "d": i.get("d", ""),
+                          "w": i.get("w", 0), "h": i.get("h", 0), "k": "photo",
+                          "t": thumb if os.path.exists(os.path.join(OUT, "img", "t", name)) else ""})
 
 
 def probe_video(path):

@@ -1,0 +1,14 @@
+[Unit]
+Description=Album · 每 5 分钟核对一次隧道地址
+
+[Timer]
+# 开机 45 秒先跑一次（给 cloudflared 留出发域名的时间）
+OnBootSec=45s
+OnUnitActiveSec=5min
+AccuracySec=30s
+# 关机期间错过的触发，开机后补跑一次
+Persistent=true
+Unit=album-base-sync.service
+
+[Install]
+WantedBy=timers.target

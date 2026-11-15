@@ -26,7 +26,8 @@
 2. 改完点 **「保存并导出 content.json」**
 3. 覆盖仓库里的 `data/content.json`，刷新页面即生效
 
-加照片不走后台：把文件放进 NAS 的照片目录，重跑媒体清单，再按上面第 3 步覆盖。
+加照片不走后台：把文件放进 NAS 的照片目录，在 NAS 上跑一次 `deploy-scripts/setup-nas.sh`
+（自动生成缩略图 + 重建清单 + 核对地址），再按上面第 3 步覆盖。
 详细流程和注意事项见 **`DEPLOY.md`**。
 
 ## 本地预览
@@ -46,7 +47,7 @@ python3 -m http.server 8791
 love-album/
 ├── index.html  timeline.html  photos.html  quotes.html  wishes.html  videos.html
 ├── admin.html                 # 后台（导出 content.json）
-├── base.json                  # 当前 NAS 隧道地址（由 pub_gh.sh 自动更新）
+├── base.json                  # 当前 NAS 隧道地址（由 base-sync.sh 自动追平）
 ├── data/content.json          # ★ 唯一内容源（构建产物，含相对路径）
 ├── data/seed.json             # ★ 元数据快照（标题/描述/地点/时间轴/心愿），构建的输入
 ├── styles/
@@ -58,12 +59,16 @@ love-album/
 │   ├── site.js                # ★ 内容层 + 渲染层，对外 window.Site
 │   ├── page-*.js              # 五个子页面的渲染入口
 │   ├── admin.js               # 后台逻辑
-│   ├── build_content.py       # 旧库 db.json + NAS 清单 → data/content.json
+│   ├── build_content.py       # seed.json + NAS 清单 → data/content.json
 │   └── gen_pages.py           # 用统一模板生成 5 个子页面
 ├── deploy-scripts/
-│   ├── boot.sh                # NAS 开机：Caddy + 隧道 + 发布地址
-│   └── pub_gh.sh              # 把隧道地址推回仓库 base.json
-└── assets/fonts               # 自托管字体（霞鹜文楷子集，延后注入不阻塞渲染）
+│   ├── boot.sh                # NAS 开机：Caddy + 隧道 + 常驻地址同步
+│   ├── setup-nas.sh           # 加完照片跑这个：缩略图 → 清单 → 地址
+│   ├── mkthumb.py             # 原图 → img/t/ 缩略图（长边 720，体积 12%）
+│   ├── mkindex.py             # 生成 index.json
+│   ├── base-sync.sh           # 隧道地址变了就推 GitHub（幂等，带校验）
+│   └── systemd/               # 裸机部署用的 service + timer
+└── assets/fonts               # 自托管字体（霞鹜文楷子集，非阻塞异步加载）
 ```
 
 ## 隐私
