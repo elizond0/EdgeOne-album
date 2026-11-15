@@ -12,6 +12,9 @@
        2. 不能等 window.load 再注入：load 要等页面所有图片（NAS 上的大图）都结束，
           慢图一挂，字体就永远不来，看起来就是「字体一直没生效」。
        media="print" + onload 切回 all 是标准的非阻塞做法：不挡渲染，且页面一开始就去拿。 -->
+  <!-- 先把字体 CSS 本身拉下来（几十 KB，不影响渲染），
+       否则要等它下载 + onload 才开始请求字形，实测白白晚 1.5 秒 -->
+  <link rel="preload" as="style" href="assets/fonts/wenkai.css" />
   <link rel="stylesheet" href="assets/fonts/wenkai.css" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="assets/fonts/wenkai.css" /></noscript>
   <link rel="stylesheet" href="styles/tokens.css" />

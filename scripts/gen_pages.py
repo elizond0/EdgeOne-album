@@ -38,6 +38,7 @@ TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
   <title>{title} · 我们的故事</title>
+  <link rel="preload" as="style" href="assets/fonts/wenkai.css" />
   <link rel="stylesheet" href="assets/fonts/wenkai.css" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="assets/fonts/wenkai.css" /></noscript>
   <link rel="stylesheet" href="styles/tokens.css" />
