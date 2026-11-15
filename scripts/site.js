@@ -13,22 +13,53 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
     );
 
-  const Site = { esc, db: null, ready: false, error: "" };
+  const Site = { esc, db: null, ready: false, error: "", base: "", mediaError: "" };
   window.Site = Site;
 
   /* ---------- 内容加载 ---------- */
+  // content.json 里存的是相对路径（img/xxx.jpg）。真实的 NAS 地址在 base.json，
+  // 由 NAS 开机时自动改写。这样隧道地址一换，只改 base.json 就行，
+  // 不用重新构建、不用重新推 Git。
   Site.load = async function () {
     try {
       const r = await fetch("data/content.json?_=" + Date.now(), { cache: "no-store" });
       if (!r.ok) throw new Error("content.json HTTP " + r.status);
       Site.db = await r.json();
       Site.ready = true;
-      if (Site.db.base) Site.db.base = String(Site.db.base).replace(/\/+$/, "");
     } catch (e) {
       Site.error = String((e && e.message) || e);
       console.warn("[Site] 内容加载失败：", Site.error);
+      return Site;
     }
+    // 取 NAS 地址（失败不阻塞文字内容，只是图片出不来）
+    try {
+      const br = await fetch("base.json?_=" + Date.now(), { cache: "no-store" });
+      if (!br.ok) throw new Error("base.json HTTP " + br.status);
+      Site.base = String((await br.json()).base || "").replace(/\/+$/, "");
+      if (!Site.base) throw new Error("base.json 里没有 base 字段");
+    } catch (e) {
+      Site.mediaError = String((e && e.message) || e);
+      console.warn("[Site] NAS 地址读取失败：", Site.mediaError);
+      Site.base = "";
+    }
+    Site.attachBase();
     return Site;
+  };
+
+  // 把相对路径拼成可用的完整地址；base 缺失时留空，让上层决定怎么提示
+  Site.media = function (rel) {
+    const f = String(rel || "");
+    if (!f) return "";
+    if (/^https?:\/\//i.test(f)) return f;
+    return Site.base ? Site.base + "/" + f.replace(/^\/+/, "") : "";
+  };
+
+  Site.attachBase = function () {
+    const db = Site.db;
+    if (!db) return;
+    (db.photos || []).forEach((p) => (p.src = Site.media(p.file || p.src)));
+    (db.videos || []).forEach((v) => (v.src = Site.media(v.file || v.src)));
+    db.base = Site.base;
   };
 
   /* ---------- 文案：meta.texts 优先 ---------- */

@@ -122,7 +122,7 @@
         db.photos.find((p) => p.file.split("/").pop() === heroFile) ||
         db.photos.find((p) => p.featured) ||
         db.photos[0];
-      if (heroPhoto) {
+      if (heroPhoto && heroPhoto.src) {
         const im = document.getElementById("hero-img");
         im.src = heroPhoto.src;
         im.alt = heroPhoto.title || "我们的合照";

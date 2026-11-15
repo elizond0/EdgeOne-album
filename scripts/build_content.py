@@ -112,7 +112,7 @@ def main():
         if is_video:
             videos.append({
                 "file": x["f"],
-                "src": base + "/" + x["f"],
+                "src": x["f"],          # 相对路径；运行时由 site.js 拼上 base.json 的地址
                 "title": (m.get("title") if m else "") or Path(x["f"]).stem,
                 "note": (m.get("desc") if m else "") or "",
                 # NAS 清单目前没给视频宽高/日期（都是 0 / 空串），
@@ -127,7 +127,7 @@ def main():
         pl = (m or {}).get("place") or {}
         photos.append({
             "file": x["f"],
-            "src": base + "/" + x["f"],
+            "src": x["f"],          # 相对路径；运行时由 site.js 拼上 base.json 的地址
             "title": (m or {}).get("title") or "",
             "desc": (m or {}).get("desc") or "",
             "date": x.get("d") or (m or {}).get("date") or "",
@@ -160,7 +160,7 @@ def main():
     out = {
         "version": 1,
         "builtAt": date.today().isoformat(),
-        "base": base,
+        "base": "",           # 不再写死；页面运行时读 base.json
         "meta": {
             "anniversary": meta.get("anniversary", ""),
             "couple": meta.get("couple", {}),
