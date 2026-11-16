@@ -31,6 +31,7 @@ import hmac
 import json
 import os
 import secrets
+import subprocess
 import sys
 import time
 import urllib.error
@@ -162,7 +163,11 @@ def check_photos(doc):
         if not f:
             missing.append("(空文件名)")
             continue
-        if not (img / f).exists():
+        # 视频条目混在 photos 里时 file 形如 video/xxx.mp4，不能拿 img/ 去找。
+        # 2026-11-16 实测：photos 562 条里没有 .mp4，但前端一旦允许把视频并入
+        # photos，这条路径就会把所有视频判成「照片不存在」并 422。
+        target = (ROOT / f) if f.startswith("video/") else (img / f)
+        if not target.exists():
             missing.append(f)
         if len(missing) > 5:
             break
@@ -231,6 +236,59 @@ class Handler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
 
+    # ── 运维接口：自更新 / 代跑脚本 ───────────────────────────────────────
+    #
+    # 为什么需要这两个：这个容器只有「网页终端」一条交互通道，AI 想改一行脚本得
+    # 逐段粘贴 base64，一次十分钟；而部署必读里写的「跑完看 /srv/pub/wb_setup.log」
+    # 实际根本没这条通道（脚本只启动不落日志）。所以把两件事做成 HTTP 接口：
+    #   /api/pull  用容器自己的 wget 从 GitHub raw 拉最新脚本，只覆盖内容有变化的文件
+    #   /api/run   代跑一条**白名单内的**脚本
+    # 安全边界：都要口令、都进全局限速；run 只认固定脚本名，不接受任意命令。
+    SAFE_SCRIPTS = {
+        "nas-setup": ["sh", "nas-setup.sh"],
+        "pull": ["sh", "_pull.sh"],
+        "index": ["python3", "mkindex.py", str(ROOT)],
+        "thumb": ["python3", "mkthumb.py", str(ROOT)],
+    }
+
+    def _op(self, kind):
+        if self.limited():
+            return self._json(429, {"ok": False, "error": "太频繁了，等一下再试"})
+        key = self.headers.get("X-Admin-Key", "")
+        if not check_key(key):
+            log(f"运维接口口令拒绝 ip={self.client_ip()} op={kind}")
+            time.sleep(0.4)
+            return self._json(401, {"ok": False, "error": "口令不对"})
+
+        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+        except Exception:
+            return self._json(400, {"ok": False, "error": "body 不是 JSON"})
+
+        if kind == "pull":
+            files = body.get("files") or ["nas-setup.sh", "pub_vid.sh", "boot.sh", "album-push.py"]
+            r = subprocess.run(["/bin/sh", str(HOME / "_pull.sh")] + files,
+                              capture_output=True, text=True, timeout=300, cwd=str(HOME))
+            log(f"pull rc={r.returncode}")
+            return self._json(200, {"ok": r.returncode == 0, "rc": r.returncode,
+                                    "out": (r.stdout + r.stderr)[-4000:]})
+
+        name = body.get("script", "")
+        cmd = self.SAFE_SCRIPTS.get(name)
+        if not cmd:
+            return self._json(400, {"ok": False, "error": f"不在白名单：{name}",
+                                    "allowed": sorted(self.SAFE_SCRIPTS)})
+        # 不复用 nas-setup 的终端环境；输出直接落 wb_setup.log，浏览器可读
+        logf = ROOT / "wb_setup.log"
+        with open(logf, "w", encoding="utf-8") as f:
+            p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT,
+                                 cwd=str(HOME), stdin=subprocess.DEVNULL,
+                                 start_new_session=True)
+        log(f"run {name} pid={p.pid}")
+        return self._json(200, {"ok": True, "pid": p.pid, "script": name,
+                                "log": "https://<当前隧道>/wb_setup.log"})
+
     def do_GET(self):
         if self.path.split("?")[0] == "/api/health":
             salt, _ = load_secret()
@@ -239,7 +297,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
-        if self.path.split("?")[0] != "/api/save":
+        p = self.path.split("?")[0]
+        if p == "/api/pull":
+            return self._op("pull")
+        if p == "/api/run":
+            return self._op("run")
+        if p != "/api/save":
             return self._json(404, {"ok": False, "error": "not found"})
 
         if self.limited():

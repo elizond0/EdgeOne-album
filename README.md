@@ -27,8 +27,8 @@
 2. 改完点 **「保存并导出 content.json」**
 3. 覆盖仓库里的 `data/content.json`，刷新页面即生效
 
-加照片 / 加视频都不走后台：把文件放进 NAS 的 `共享文件夹/Photos/`，在 `album-node` 容器里跑一次
-`deploy-scripts/nas-setup.sh`（统一文件名小写 → 生成公网压缩图 → 视频转码 + 抽首帧封面
+加照片 / 加视频都不走后台：把文件放进 NAS 的 `共享文件夹/拓展工具/照片展示/csy/`（容器内 `/srv/csy`，只读挂载），
+在 `album-node` 容器里跑一次 `deploy-scripts/nas-setup.sh`（源目录非空校验 → 统一小写（只读自动跳过）→ 生成公网压缩图 → 视频转码 + 抽首帧封面
 → 生成缩略图 → 重建 `index.json` → 拉起域名自愈常驻），再用 `scripts/build_content.py`
 重建内容清单。详细流程和注意事项见 **`docs/相册发布处理-规范.md`**。
 
