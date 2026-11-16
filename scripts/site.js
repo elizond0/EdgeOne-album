@@ -30,17 +30,28 @@
   // 每次换 query 等于每次都强制回源，实测回源 2~30 秒，而命中缓存是几十毫秒。
   // content.json 体量不小且改动少，交给缓存；base.json 只有 110 字节，
   // 但隧道地址一变就必须尽快生效，所以它 bust。
-  async function getJSON(url, name, tries, bust) {
+  // timeoutMs 是硬超时：content.json 316 KB 实测国内 6.2/17.3/22.0/27.8/32.9 秒，
+  // 而 fetch 默认没有超时（浏览器肯等 300 秒）。不加这个，网络半死时用户看到的是
+  // 一直白屏——既不报错也不降级，比慢更难受。
+  async function getJSON(url, name, tries, bust, timeoutMs) {
+    const limit = timeoutMs || 20000;
     let last;
     for (let i = 0; i < (tries || 3); i++) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), limit);
       try {
         const u = bust ? url + "?_=" + Date.now() : url;
-        const r = await fetch(u, { cache: bust ? "no-store" : "default" });
+        const r = await fetch(u, { cache: bust ? "no-store" : "default", signal: ac.signal });
         if (!r.ok) throw new Error(name + " HTTP " + r.status);
         return await r.json();
       } catch (e) {
-        last = e;
+        last =
+          e && e.name === "AbortError"
+            ? new Error(name + " 超时（" + Math.round(limit / 1000) + " 秒没响应）")
+            : e;
         if (i < (tries || 3) - 1) await new Promise((ok) => setTimeout(ok, 400 * (i + 1)));
+      } finally {
+        clearTimeout(timer);
       }
     }
     throw last;
@@ -48,7 +59,7 @@
 
   Site.load = async function () {
     try {
-      Site.db = await getJSON("data/content.json", "content.json", 3, false);
+      Site.db = await getJSON("data/content.json", "content.json", 3, false, 45000);
       Site.ready = true;
     } catch (e) {
       Site.error = String((e && e.message) || e);
@@ -57,7 +68,7 @@
     }
     // 取 NAS 地址（失败不阻塞文字内容，只是图片出不来）
     try {
-      const bj = await getJSON("base.json", "base.json", 2, true);
+      const bj = await getJSON("base.json", "base.json", 2, true, 8000);
       Site.base = String((bj && bj.base) || "").replace(/\/+$/, "");
       if (!Site.base) throw new Error("base.json 里没有 base 字段");
     } catch (e) {

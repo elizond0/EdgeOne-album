@@ -105,19 +105,19 @@ sh scripts/release.sh
 全部在 `admin.html` 里做。前台已移除所有后台入口，需要手动输入
 `https://elizond0.github.io/album/admin.html`：
 
-1. 打开后台，输管理口令。默认口令的哈希写在 `scripts/admin.js` 的 `DEFAULT_HASH`
-   （公开仓库任何人可读，**进入后请立即在「基本信息 → 修改口令」改掉**，
-   改动只存在本机浏览器，不同步其他设备）
-2. 首次使用先建一个 **Fine-grained token**（GitHub → Settings → Developer settings →
-   Fine-grained tokens）：Repository access 只选 `elizond0/album`，
-   Permissions 只勾 **Contents → Read and write**，有效期建议 90 天。
-   在后台「GitHub Token 设置」里填一次，**只存 sessionStorage，关标签页即失效**
-3. 改完点右上角 **「保存并发布」**，浏览器直接调 GitHub Contents API 提交
-   `data/content.json`，push 后 Pages 约 20~60 秒自动重建，强刷可见
-4. 没有 token / 网络不通时点 **「仅下载」**，走原来的「下载文件 → 手动推送」，两条路等价
+1. 打开后台，输管理口令（**见云盘根目录 `凭据.md` §1.1**，不在仓库里，也不在本文）
+2. 改完点右上角 **「保存并发布」**。请求发给家里 NAS 上的 `album-push.py`
+   （经 Caddy 的 `/api/*` 反代），由它校验、存档、再提交 GitHub；
+   push 后 Pages 约 20~60 秒重建，强刷可见
+3. NAS 不在线时：展开「GitHub Token（备用）」填一个 fine-grained token 走直连，
+   或者点「仅下载」手动推。三条路产出的字节完全一致
 
-> token 不要图省事塞进 localStorage 或写进任何文件。它等价于仓库写权限，
-> 泄漏了别人能改 `index.html` 注入脚本。只放 sessionStorage、用 90 天过期、只授单仓库。
+**为什么绕一层 NAS，而不是浏览器直接连 GitHub**：token 不进浏览器，泄漏最多丢一个口令；
+而且写入口在服务端硬编码只能改 `data/content.json`，口令被破也**改不了 `index.html`**
+（直连方案里 token 一泄漏就能往首页注入脚本）。
+
+> 换口令要动两处：NAS 上 `python3 /var/lib/tailscale/album-push.py --set-key '新口令'`，
+> 同时把 `admin.js` 的 `DEFAULT_HASH` 换成新口令的 sha256 并推送。只改一处会 401。
 
 后台能改的东西：
 
@@ -129,6 +129,7 @@ sh scripts/release.sh
 | 站点文本 | 全站文案（标题、各板块的小标题与说明、导航文字……） |
 | 时间轴 / 随手记 / 愿望清单 / 事件 | 增删改 |
 | 照片库 | 描述、日期、省市区地点、隐藏（不上墙）、精选；支持按文件名/描述/地点搜索、按地点分组视图 |
+
 
 **改完记得发布。** 关页面前会拦一下未发布的改动。
 
@@ -401,6 +402,61 @@ GitHub Pages 给 `data/content.json` 的 `Cache-Control` 是 `max-age=600`，浏
   提交失败先看是哪一条：`TIMEOUT` 就别重试了，直接走「仅下载」。
 - **409 只在内容真的变了才会出现**：用过期 sha 提交**完全相同**的内容，GitHub 返回 200
   （blob 不变、commit 照建）。所以别拿「重复提交同内容」去测冲突分支，测不出来。
+
+### 14. 加 `/api` 反代时踩的三个坑（都是「看起来没问题」的那种）
+
+**① CORS 头两处都发 → 拼成两个值，浏览器直接拒绝**
+
+Caddy 加 `header Access-Control-Allow-Origin "*"`，Python 的 handler 里也
+`send_header("Access-Control-Allow-Origin", "https://elizond0.github.io")`。
+结果响应头是：
+
+```text
+access-control-allow-origin: *, https://elizond0.github.io
+```
+
+浏览器判非法多值，`fetch` 直接失败。前端表现为「NAS 不在线」，而 `curl` 手动打却是 200 ——
+**这是最容易误判的一类：命令行通、浏览器不通，八成是 CORS 头不对，不是网络。**
+
+判据：`curl -D - -o /dev/null -H "Origin: https://elizond0.github.io" <url>` 看这个头
+是不是**只有一个值**。定规则：CORS 只由 Caddy 发，Python 侧一个都不发。
+
+**② `index.json` 的 `no-store` 被同组 `header` 指令盖掉**
+
+原来写在 server block 顶层，靠 `@idx path` 做例外，是生效的。改成 `handle` 结构后
+把两条 `header` 写进同一个 handle：
+
+```caddy
+handle {
+	header Cache-Control "public, max-age=604800"
+	@idx path /index.json
+	header @idx Cache-Control "no-store"
+}
+```
+
+**实测 index.json 变成了 `max-age=604800`** —— Caddy 的 `header` 不按书写顺序执行，
+同名的后写的不一定赢。修法是给 `index.json` 单开一个 `handle`，让它根本不共享那条 header。
+
+> 这个坑的代价是延迟暴露的：隧道一换域名，客户端 10 分钟内还在用旧 index.json，
+> 表现为「新图传上去了但页面没有」。上线后必须**分别 curl 三类资源**核对 Cache-Control：
+> index.json → no-store / 图片 → max-age / api → 只有一个 CORS 值。
+
+**③ 只按 IP 限速 = 没限速**
+
+`X-Forwarded-For` / `CF-Connecting-IP` 拿到的是**出口 IP**，而云沙箱、手机流量的出口是
+**地址池**。实测连打 6 次，服务端日志里出现 6 个不同 IP，全部放行：
+
+```text
+口令拒绝 ip=43.143.248.56
+口令拒绝 ip=43.143.240.7
+口令拒绝 ip=152.136.190.89
+...
+```
+
+修法：**全局闸门为准**（15 次/分），单 IP 只作辅助。改完连打 17 次，
+第 16 次开始稳定返回 429。
+
+> 顺带一个测试认知：在云沙箱里测「按 IP 限速」永远测不出来，别拿它当通过标准。
 
 **为什么本地能稳定复现**：本地 `python3 -m http.server` 没有媒体文件，图片全 404 → 卡片只能用 intrinsic 占位 → 100% 触发。线上因为隧道慢，首次访问同样是这个状态。**测这类「图片没到时的布局」必须让图片真的缺失或延迟**，图片一加载完 bug 就自己消失了。
 
