@@ -321,11 +321,17 @@
     // 卡片总高 605px 在 1024px 视口内，用户看到的就是「照片墙只有两排」。
     // 判据只认同一个坐标系：grid 底边是否还在首屏内。别混用「more 的位置」——
     // 它下面还有「查看全部」链接，判出来的边界比网格实际底边高一截。
-    (function prime() {
-      if (more.hidden) return;                      // 已铺满 cap，没什么可补
-      if (grid.getBoundingClientRect().bottom > window.innerHeight) return; // 已越过首屏，交给滚动
-      if (grow()) requestAnimationFrame(prime);      // 补一批后网格仍没占满首屏，接着补
-    })();
+    // 量之前还要让版面落定：prime 跑在 site:ready 里，此时上面的板块可能还是
+    // opacity:0 的渐入初态，后面板块会跟着上浮（实测同一时刻 2893、稳定后 3083，差 190px）。
+    // 所以分几帧判、最多补 3 批（自然被 cap 封住），别一把梭也别无限循环。
+    // 判定不能只用「此刻 grid 底边在不在首屏」：首页大概率深链进来后立刻有轮播
+    // takeover 把滚动弹走（实测 location.hash 变 #p2~#p4、scrollY 瞬间非 0），
+    // 那一刻量出来的「已越过首屏」是假的，于是永远停在 2 排。
+    // 所以看的是「首屏排数够不够」：photoRowsMax 行以内全铺满，超过就不硬拉。
+    if (window.scrollY < 40) {
+      const need = Math.min(cap, maxRows * perRow);
+      if (shown < need) { grow(); sync(); }
+    }
     if (btn) btn.addEventListener("click", function () { grow(); checkNear(); });
     if (!("IntersectionObserver" in window)) {
       more.hidden = true;
