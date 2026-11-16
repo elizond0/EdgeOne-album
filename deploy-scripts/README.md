@@ -94,3 +94,6 @@ tail -f /var/lib/tailscale/base-sync.log     # 看它在干什么
 - `pub_img.py` 的 `img_index.json` 是按源目录重建的，源里删掉的图会从清单消失。
   默认 `--keep-orphans` 行为会把「源里没有、`img/` 里还在」的图补回清单，
   否则像 `img_6531` 这种原图已丢的历史照片，重跑一次就静默下线了。
+- 视频「要不要重转」只能看**封面在不在**（`video/poster/<名>.jpg`）。只比体积会掉进
+  「迁走原片 → video/ 空了 → 重转 → 再迁走」的死循环，实测连跑两遍白转 16 个视频。
+  自检办法：连跑两遍 `nas-setup.sh`，第二遍 4c 必须全部 `SKIP`。
