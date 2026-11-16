@@ -8,8 +8,9 @@
 #         · 隧道地址变了没人追平 base.json（base-sync 进程根本不在）
 #       这个脚本把这几件事一次补齐，并把 base-sync 挂成常驻。
 #
-# 数据来源（实测）：/srv/photos 里既有照片也有视频 —— 579 项 = 562 张图 + 16 个视频 + #recycle。
-#       /srv/csy 是同一批文件的只读暂存副本。所以照片和视频都从 /srv/photos 进发布链。
+# 数据来源（2026-11-16 实测）：共享文件夹 csy 子目录 → 容器 /srv/csy（只读），
+#       578 项 = 561 JPG + 16 MOV + 1 PNG，全在**同一层**，没有子目录。
+#       压缩图与视频的唯一源就是这个目录；/srv/photos 已废弃（目录在但只剩一个空壳）。
 #
 # 用法（在容器网页终端里）：
 #   wget -q -O /tmp/nas-setup.sh "https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/nas-setup.sh?x=$(date +%s)" \
@@ -25,7 +26,7 @@ set -u
 exec </dev/null
 P=/var/lib/tailscale
 OUT=/srv/pub
-SRC=${SRC_PHOTOS:-/srv/photos}
+SRC=${SRC_PHOTOS:-/srv/csy}
 RAW=https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts
 # GitHub Pages 发布的是同一个 main 分支，CDN 通常比 raw 稳，作为备用源
 PAGES_RAW=https://elizond0.github.io/album/deploy-scripts
@@ -63,6 +64,33 @@ done
 python3 -c 'import PIL' 2>/dev/null || { say "缺少 Pillow"; exit 1; }
 say "OK python3 / ffmpeg / Pillow 都在；源目录 $SRC"
 
+# 源目录必须真切能用。空目录 / 不存在 / 只有回收站，一律立刻退出。
+#
+# 为什么要拦死：源目录挂错时后面每一步都「成功」——pub_img.py 处理 0 张、
+# 视频入队 0 个、mkindex.py 照常重建清单，日志看着全绿，站点上的新照片却一张没进。
+# 这种失败没有报错、没有红色，只能靠这一步主动判死。
+if [ ! -d "$SRC" ]; then
+  say "✗ 源目录不存在：$SRC"
+  say "  检查容器挂载：mount | grep srv/csy —— 挂到共享文件夹 csy 子目录，只读"
+  exit 1
+fi
+_media=$(ls -1 "$SRC" 2>/dev/null | grep -icE '\.(jpe?g|png|webp|bmp|tiff?|mov|mp4|heic)$')
+say "  源目录 $SRC 里媒体文件 $_media 个"
+if [ "$_media" -eq 0 ]; then
+  say "✗ 源目录里一张图 / 一个视频都没有，拒绝继续（挂载很可能指错了目录）"
+  exit 1
+fi
+# 兜底：只对比「源里有、pub 里没有」的压缩图，缺口过大说明源指错了。
+# 阈值 50% 是保守值 —— 正常新增照片产生的缺口远小于这个比例。
+if [ -d "$OUT/img" ]; then
+  _pub=$(ls -1 "$OUT/img"/*.jpg 2>/dev/null | wc -l)
+  if [ "$_pub" -gt 0 ] && [ "$_media" -lt $((_pub / 2)) ]; then
+    say "✗ 源目录只有 $_media 个媒体文件，而 $OUT/img 已有 $_pub 张压缩图"
+    say "  源目录多半挂错了（正常情况源数 ≥ 已发布数）。确认后如仍要继续：SRC_PHOTOS=... NAS_SETUP_FORCE=1 sh nas-setup.sh"
+    [ "${NAS_SETUP_FORCE:-0}" = "1" ] || exit 1
+  fi
+fi
+
 # ── 1. 部署脚本 ────────────────────────────────────────────────────────────
 say "=== 1/8 部署 pub_img.py / mkthumb.py / base-sync.sh / mkindex.py ==="
 mkdir -p "$P"
@@ -82,11 +110,31 @@ fi
 
 # ── 2. 源目录文件名统一小写 ────────────────────────────────────────────────
 # 只改目录项、文件内容一个字节都不动；已有同名小写文件时加 _1 后缀避让，绝不覆盖。
+#
+# 源目录是**只读挂载**（共享文件夹 csy 子目录 → /srv/csy:ro）。ro 下 os.rename 会
+# 直接抛 EROFS，脚本在第 2 步就挂掉 —— 这不是程序 bug，是设计如此：故意不让任何人
+# 碰到原图。所以这里先探测可写性，只读就跳过本步（文件名小写化本来就只是美观，
+# pub_img.py 输出时已经强制 stem.lower()+".jpg"，不改源名也不会 404）。
 say "=== 2/8 统一 $SRC 文件名小写 ==="
-if [ -d "$SRC" ]; then
-  SRC="$SRC" python3 - <<'PY'
-import os
+# 可写性判据不能写成 `! : > 文件`：只读文件系统下 sh 会打 Write Failure 并
+# **直接 exit 1**，脚本在第 2 步就整体死掉（2026-11-16 在 NAS 上实跑踩到）。
+# 改用 mount 表判 ro，失败也只是一个空串，不会带崩脚本。
+_ro=$(mount 2>/dev/null | grep " on $SRC " | grep -c "(ro," 2>/dev/null || echo 0)
+if [ ! -d "$SRC" ]; then
+  say "  $SRC 不存在，跳过"
+elif [ "$_ro" -gt 0 ]; then
+  say "  $SRC 是只读挂载（ro），跳过改名。压缩图输出名由 pub_img.py 统一小写，不影响站点"
+else
+  # 兜底：ro 判断偶尔会因 mount 格式差异失效，用 python 试写一次并吞掉异常
+  SRC="$SRC" python3 - <<'PYF'
+import os, sys
 d = os.environ["SRC"]
+try:
+    t = os.path.join(d, ".wbtest")
+    open(t, "w").close(); os.remove(t)
+except Exception as e:
+    print("  只读或不可写（%s），跳过改名" % type(e).__name__)
+    sys.exit(0)
 n = skip = conf = 0
 for b in sorted(os.listdir(d)):
     p = os.path.join(d, b)
@@ -107,21 +155,25 @@ for b in sorted(os.listdir(d)):
     os.rename(p, t)
     n += 1
 print("  重命名 %d 个 / 已是小写 %d 个 / 冲突避让 %d 个" % (n, skip, conf))
-PY
+PYF
   say "  剩余含大写的文件名：$(ls -1 "$SRC" 2>/dev/null | grep -c '[A-Z]')"
-else
-  say "  $SRC 不存在，跳过"
 fi
 
 # ── 3. 公网压缩图（这一步以前漏了，新照片根本进不了站点）─────────────────
 # 规则：先读 EXIF 日期 → 烘焙方向 → RGB → 长边 2048 → q85 progressive 且不写 EXIF。
 # --skip-existing：输出比源新就跳过，加一张照片只处理那一张。
 say "=== 3/8 生成公网压缩图（长边 2048，q85，去元信息）==="
-if [ -d "$SRC" ]; then
-  python3 "$P/pub_img.py" "$SRC" "$OUT" --skip-existing 2>&1 | tail -6
-  say "公网压缩图：$(ls "$OUT/img"/*.jpg 2>/dev/null | wc -l) 张"
-else
-  say "⚠ 源目录不存在，跳过（/srv/pub/img 保持原样）"
+_pub_before=$(ls "$OUT/img"/*.jpg 2>/dev/null | wc -l)
+python3 "$P/pub_img.py" "$SRC" "$OUT" --skip-existing 2>&1 | tail -6
+_pub_after=$(ls "$OUT/img"/*.jpg 2>/dev/null | wc -l)
+say "公网压缩图：$_pub_after 张（本轮新增 $((_pub_after - _pub_before))）"
+# 源里是图片、压缩图却没增加，说明来源对不上（典型：文件名大小写变化被当成同一张，
+# 或 pub_img.py 全部 skip）。
+# 注意判据只数「图片」不数媒体：源里那 1 个 PNG 不进照片清单（只在视频/封面链里），
+# 把视频算进来会让「578 vs 562」永远差一截，变成每次跑都刷一条假警告。
+_img=$(ls -1 "$SRC" 2>/dev/null | grep -icE '\.(jpe?g|png|webp|bmp|tiff?|heic)$')
+if [ "$_img" -gt "$_pub_after" ]; then
+  say "⚠ 源目录 $_img 张图片，压缩图只有 $_pub_after 张 —— 有新增没进发布目录，查上面 pub_img.py 输出"
 fi
 
 # ── 4. 视频：新片入队 + 备份原片 + 统一小写 + 转码 + 抽首帧封面 ────────────

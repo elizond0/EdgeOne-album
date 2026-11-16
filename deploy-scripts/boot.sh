@@ -15,7 +15,10 @@ P=${ALBUM_HOME:-/var/lib/tailscale}
 # ffmpeg 一定要装上：视频转码和首帧封面都靠它。之前漏了这一项，
 # 容器起来后 python3 / ffmpeg 都不存在，缩略图和转码脚本自然跑不动。
 apk add --no-cache caddy curl python3 py3-pillow ffmpeg >/dev/null 2>&1
-mkdir -p /var/run/tailscale /etc/caddy /srv/pub /srv/photos /srv/pub/video/poster
+# /srv/photos 不再 mkdir。它以前是原图目录，2026-11-16 起源头改为 /srv/csy；
+# 这里再建一个空目录只会让「源头是哪」看起来仍然成立，排查时反而多一个假线索。
+# 目录不存在就是不存在，比一个空壳诚实。
+mkdir -p /var/run/tailscale /etc/caddy /srv/pub /srv/pub/video/poster
 
 cp $P/Caddyfile /etc/caddy/Caddyfile
 caddy run --config /etc/caddy/Caddyfile >$P/caddy.log 2>&1 &
