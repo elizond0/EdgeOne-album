@@ -326,6 +326,40 @@ GitHub Pages 给 `data/content.json` 的 `Cache-Control` 是 `max-age=600`，浏
 
 之前这里是一失败就 `return`，用户看到的是「全是默认文案 + 破图」，看起来像网站坏了。
 
+### 11. 手机/平板上照片卡片变成「一张巨图」，且**看不到横向滚动条**
+
+这是本项目的真实事故，排查过程比结论值钱，完整留档。
+
+**症状**：iPhone 上打开首页，照片墙本该 2 列，实际是 1 张 420px 宽的巨图，右边被切掉一截。
+`document.documentElement.scrollWidth - clientWidth` 却是 **0**，所以「有没有横向滚动」这条老判据完全报不出来。
+
+**三个条件同时成立才会触发**，缺一个都不复现：
+
+| 条件 | 出处 | 作用 |
+|---|---|---|
+| `.wall__item` 是 grid 子项 | `.preview-grid { display:grid; grid-template-columns:repeat(2,1fr) }` | grid 子项默认 `min-width:auto`，会被内容的最小固有宽度撑开 |
+| 卡片带 `content-visibility:auto` + `contain-intrinsic-size:auto 420px` | 为 562 张卡的滚动性能加的 | 屏外卡片不渲染，按 420px 占位 —— 这个 420 就是 `min-width:auto` 算出来的最小宽度 |
+| `html, body { overflow-x: clip }` | 防止整页横滚 | **把溢出藏起来**，于是 hscroll 恒为 0 |
+
+列宽 163px，卡片要 420px → 整列被撑破。桌面 4 列每列 262px 时也 > 420? 不，262 < 420 同样被撑，但桌面因容器 1120px 有余量、且首屏卡片已渲染，实测恰好没暴露 —— **别以为 PC 没问题就等于没问题**。
+
+**修法**（一行，别删）：
+
+```css
+.wall__item { min-width: 0; }
+```
+
+`min-width:0` 让 grid 子项允许收缩到内容最小宽度以下，`1fr` 恢复按容器均分。
+
+**判据（这次踩的坑就在判据上）**：
+
+- ❌ 只看 `scrollWidth > clientWidth` → 被 `overflow-x:clip` 掩盖，永远 0
+- ❌ 只滚到页面 45% 再量 → `content-visibility:auto` 的屏外卡片 `getBoundingClientRect()` 退化为 0，漏报
+- ✅ **滚到卡片区**（`[data-sec=photos]` 或 `.wall`），再逐元素比 `rect.right > clientWidth + 1`
+- ✅ 或者更直接：比 `卡片宽度` 与 `容器宽度 / 列数`，差 < 20px 才算对
+
+**为什么本地能稳定复现**：本地 `python3 -m http.server` 没有媒体文件，图片全 404 → 卡片只能用 intrinsic 占位 → 100% 触发。线上因为隧道慢，首次访问同样是这个状态。**测这类「图片没到时的布局」必须让图片真的缺失或延迟**，图片一加载完 bug 就自己消失了。
+
 ---
 
 ## 十、验收清单（每次改完过一遍）
@@ -338,6 +372,9 @@ python3 -m http.server 8791   # 本地起站
 - 首页照片：首屏 2 排（桌面 8 / 手机 4），滚到底追加到「最多行数」（默认 6）
 - 首页视频：3 个 `<video>` 都是 `preload="none"` 且有 poster，`networkidle` 前 **0 个 `.mp4` 请求**，总流量 < 3 MB
 - 照片墙：网格请求走 `/img/t/`（找不到就退回压缩图），**原图请求数应为 0**
+- **手机/平板照片墙**：滚到卡片区后，卡片宽 ≈ 容器宽 ÷ 列数（±20px），且逐元素
+  `rect.right <= clientWidth + 1`。**不能只看横向滚动条**——`overflow-x:clip` 会把它
+  掩盖成 0，见坑 11；测的时候要让图片真的缺失或延迟，图片加载完 bug 就自己消失了
 - 灯箱：点开先出缩略图、随后换压缩图；左右切换、Esc 关闭正常
 - 照片墙：地点筛选里数量之和 = 照片总数
 - 后台：改一个数字 → 直接点「保存并导出」→ 下载的 json 里能查到改动，
