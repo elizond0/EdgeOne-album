@@ -1,9 +1,9 @@
 /* ============================================
    admin.js —— NAS 路线的管理后台（纯静态版）
-   与线上应用版的关键区别：静态站没有可写的后端，
-   因此「保存」= 生成一份 data/content.json 让你下载，
-   再由你放到 NAS 的公开目录覆盖同名文件（或交给更新脚本）。
-   好处：不引入任何服务器，站点永远是可静态托管的。
+   发布有两条路，走的是同一个 content.json：
+     ① 「保存并发布」→ 浏览器直接调 GitHub Contents API 提交，push 后 Pages 自动重建
+     ② 「仅下载」   → 生成 content.json 让你手动放/推，作为降级通道
+   两条路共用一个 pushContent()，将来若要换成 NAS 代理，只改这个函数体，页面不用动。
    ============================================ */
 (function () {
   "use strict";
@@ -388,7 +388,8 @@
         box.innerHTML += `<p class="modal__hint">仅显示前 60 张（共 ${list.length} 张），用搜索框精确查找。</p>`;
     }
     $("#photo-stat").textContent = `共 ${db.photos.length} 张 · 当前匹配 ${list.length} 张`;
-    markDirty();
+    // 这里不要 markDirty()：本函数只负责「按筛选条件重绘」，进后台首次渲染也会走到，
+    // 标脏会让「有未发布的改动」一进页面就亮着。真正的编辑在下面 #photo-list 的 input 里标。
   }
 
   $("#photo-search")?.addEventListener("input", renderPhotos);
@@ -460,12 +461,14 @@
   function buildContent() {
     syncFormToDb();
     const out = JSON.parse(JSON.stringify(db));
-    // 内存里的 src 已被 Site.attachBase() 拼成完整 URL。导出时必须还原成相对路径，
+    // 内存里的 src / thumb 已被 Site.attachBase() 拼成绝对 URL，导出必须还原成相对路径，
     // 否则隧道地址会被重新写死进 content.json，下次换地址又得重建。
-    // thumb 是运行时按 base 拼出来的派生字段，不属于数据，导出前删掉。
+    // thumb 还原成 s（两者在数据里同源）。以前这里直接 delete p.thumb，导致每次保存都
+    // 整体删掉 562 个 thumb 字段——文件结构变了、commit diff 全是噪音，看不出真正改了
+    // 什么。既然要把 commit 当更新日志用，diff 就必须只包含真改动。
     (out.photos || []).forEach((p) => {
       if (p.file) p.src = p.file;
-      delete p.thumb;
+      p.thumb = p.s || "";
     });
     (out.videos || []).forEach((v) => { if (v.file) v.src = v.file; });
     out.base = "";
@@ -474,7 +477,191 @@
     return out;
   }
 
-  $("#save-all").addEventListener("click", () => {
+  /* ============================================
+     发布：直连 GitHub Contents API
+     --------------------------------------------
+     只改这里就能换传输层（例如换成 NAS 代理 /api/save），上层按钮和页面不用动。
+     安全前提：token 只进 sessionStorage（关标签页即失效），绝不写 localStorage。
+     ============================================ */
+  const GH = {
+    repo: "elizond0/album",
+    branch: "main",
+    dir: "data",          // 目录名，给 trees 接口用
+    file: "content.json", // 文件名
+    path: "data/content.json",
+    store: "album-gh-token",
+  };
+  const getToken = () => sessionStorage.getItem(GH.store) || "";
+  const setToken = (t) => (t ? sessionStorage.setItem(GH.store, t) : sessionStorage.removeItem(GH.store));
+
+  // 硬超时：国内到 api.github.com 偶发卡住，卡死比报错更难排查
+  async function ghFetch(url, opt, ms = 60000) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), ms);
+    try {
+      return await fetch(url, { ...opt, signal: ac.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // 取远端当前 blob sha。优先 trees 接口（只回目录清单、几百字节，实测 0.6s）；
+  // contents 接口会把整个 316 KB base64 下回来（实测 9s），只作兜底。
+  async function remoteSha(headers) {
+    try {
+      const r = await ghFetch(
+        `https://api.github.com/repos/${GH.repo}/git/trees/${GH.branch}:${GH.dir}`,
+        { headers, cache: "no-store" },
+        20000
+      );
+      if (r.ok) {
+        const j = await r.json();
+        const hit = (j.tree || []).find((x) => x.path === GH.file);
+        if (hit && hit.sha) return hit.sha;
+      }
+    } catch (e) {
+      /* 落到 contents 兜底 */
+    }
+    const r = await ghFetch(
+      `https://api.github.com/repos/${GH.repo}/contents/${GH.path}?ref=${GH.branch}&t=${Date.now()}`,
+      { headers, cache: "no-store" }
+    );
+    if (r.status === 401) throw new Error("BAD_TOKEN");
+    if (r.status === 403) throw new Error("NO_SCOPE");
+    if (r.status === 404) throw new Error("NOT_FOUND");
+    if (!r.ok) throw new Error(`读取远端失败：HTTP ${r.status}`);
+    return (await r.json()).sha;
+  }
+
+  // 316 KB 的 UTF-8 文本转 base64：分块喂给 fromCharCode，避免 apply 参数过多爆栈
+  function toBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+  }
+
+  const GH_ERR = {
+    NO_TOKEN: "还没填 GitHub Token，点下方「GitHub Token 设置」填一个",
+    BAD_TOKEN: "Token 无效或已过期，去 GitHub 重新生成一个",
+    NO_SCOPE: "Token 没有写权限：Repository permissions 里 Contents 要勾 Read and write",
+    CONFLICT: "远端文件刚被改过（sha 对不上），刷新页面后重试",
+    NOT_FOUND: "仓库里找不到 data/content.json，检查 repo 名和分支",
+    TOO_BIG: "文件太大，GitHub 拒绝了这次提交",
+    NET: "连不上 GitHub（网络被拦或超时），可以改用「仅下载」",
+    TIMEOUT: "等了两分钟没回音，网络太慢或被拦了，改用「仅下载」更快",
+  };
+
+  // 统一出口：传 content.json 全文，提交到仓库。换传输层只改这个函数。
+  async function pushContent(json) {
+    const token = getToken();
+    if (!token) throw new Error("NO_TOKEN");
+
+    const api = `https://api.github.com/repos/${GH.repo}/contents/${GH.path}`;
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+
+    let sha = null;
+    try {
+      sha = await remoteSha(headers);
+    } catch (e) {
+      if (/^(BAD_TOKEN|NO_SCOPE|NOT_FOUND)/.test(e.message || "")) throw e;
+      throw new Error("NET");
+    }
+
+    const body = {
+      message: `admin: 更新 content.json（${new Date().toLocaleString("zh-CN", { hour12: false })}）`,
+      content: toBase64(json),
+      branch: GH.branch,
+    };
+    if (sha) body.sha = sha;
+
+    let r;
+    try {
+      r = await ghFetch(api, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }, 120000);
+    } catch (e) {
+      throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NET");
+    }
+
+    if (r.status === 401) throw new Error("BAD_TOKEN");
+    if (r.status === 403) throw new Error("NO_SCOPE");
+    if (r.status === 409) throw new Error("CONFLICT");
+    if (r.status === 422) throw new Error("TOO_BIG");
+    if (!r.ok) {
+      let msg = "";
+      try { msg = (await r.json()).message || ""; } catch (e) {}
+      throw new Error(`提交失败 HTTP ${r.status}${msg ? "：" + msg : ""}`);
+    }
+    return r.json();
+  }
+
+  /* ---------- Token 面板 ---------- */
+  function syncTokenState() {
+    const has = !!getToken();
+    const el = $("#token-state");
+    if (!el) return;
+    el.textContent = has ? "已设置 · 本次会话有效" : "未设置";
+    el.classList.toggle("is-on", has);
+  }
+
+  $("#token-save")?.addEventListener("click", () => {
+    const t = ($("#token-input").value || "").trim();
+    if (!t) return toast("token 不能为空", true);
+    if (!/^(github_pat_|gh[pousr]_)/.test(t)) return toast("这不像 GitHub token（应以 github_pat_ 或 ghp_ 开头）", true);
+    setToken(t);
+    $("#token-input").value = "";
+    syncTokenState();
+    toast("已保存到本次会话，关掉这个标签页就失效");
+  });
+
+  $("#token-clear")?.addEventListener("click", () => {
+    setToken("");
+    syncTokenState();
+    toast("已清除本次会话的 token");
+  });
+
+  /* ---------- 保存并发布 ---------- */
+  $("#save-all").addEventListener("click", async () => {
+    const btn = $("#save-all");
+    const json = JSON.stringify(buildContent(), null, 1);
+
+    if (!getToken()) {
+      const box = $("#token-box");
+      if (box) box.open = true;
+      $("#token-input")?.focus();
+      toast("先填 GitHub Token 才能直接发布；也可以点「仅下载」", true);
+      return;
+    }
+
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = "提交中…";
+    try {
+      const r = await pushContent(json);
+      dirty = false;
+      $("#dirty-tip").hidden = true;
+      const c = (r && r.commit && r.commit.sha || "").slice(0, 7);
+      toast(`已提交${c ? " " + c : ""}，Pages 约 20~60 秒构建，之后强刷可见`);
+    } catch (e) {
+      toast(GH_ERR[e.message] || e.message || "提交失败", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  });
+
+  /* ---------- 仅下载（降级通道，原行为） ---------- */
+  $("#save-download").addEventListener("click", () => {
     const json = JSON.stringify(buildContent(), null, 1);
     const blob = new Blob([json], { type: "application/json" });
     const a = document.createElement("a");
@@ -484,7 +671,7 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     dirty = false;
     $("#dirty-tip").hidden = true;
-    toast("已导出 content.json，覆盖站点 data/content.json 并推送；没生效就按 Ctrl/Cmd+Shift+R 强刷");
+    toast("已导出 content.json，手动推上去同样生效；没生效就按 Ctrl/Cmd+Shift+R 强刷");
   });
 
   window.addEventListener("beforeunload", (e) => {
@@ -492,5 +679,6 @@
   });
 
   /* ---------- 启动 ---------- */
+  syncTokenState();
   if (getKey()) enter();
 })();

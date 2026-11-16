@@ -44,16 +44,39 @@
           <button class="tab" data-tab="photos" type="button">照片库</button>
         </nav>
         <div class="admin-bar__right">
-          <span class="dirty-tip" id="dirty-tip" hidden>有未导出的改动</span>
-          <button class="btn" id="save-all" type="button">保存并导出 content.json</button>
+          <span class="dirty-tip" id="dirty-tip" hidden>有未发布的改动</span>
+          <button class="btn" id="save-all" type="button">保存并发布</button>
+          <button class="btn btn--ghost" id="save-download" type="button">仅下载</button>
         </div>
       </div>
 
       <p class="modal__hint admin-note">
-        静态站没有可写的后端，所以这里的「保存」是<b>生成一份 content.json 给你下载</b>：
-        把它放到 NAS 上站点对应的目录（与 <code>index.json</code> 同级），刷新页面即生效。
-        照片文件本身不需要在这里上传——直接把照片放进 NAS 的照片目录即可。
+        「保存并发布」会把 <code>content.json</code> 直接提交到仓库 <code>elizond0/album</code>，
+        推送后 GitHub Pages 约 20~60 秒自动重建；构建完成后用 <kbd>Ctrl/Cmd+Shift+R</kbd> 强刷即可看到。
+        第一次用要先填 GitHub Token（见下方）。不想填也能点「仅下载」，走原来的手动上传。
+        照片文件本身不需要在这里传——放进 NAS 的照片目录即可。
       </p>
+
+      <details class="admin-note admin-token" id="token-box">
+        <summary>
+          <span>GitHub Token 设置</span>
+          <span class="token-state" id="token-state">未设置</span>
+        </summary>
+        <div class="admin-token__body">
+          <p class="modal__hint">
+            建一个 <b>Fine-grained token</b>：Repository access 只选 <code>elizond0/album</code> 一个仓库，
+            Permissions 只勾 <b>Contents → Read and write</b>，有效期建议 90 天。
+            token 只存在当前标签页的 sessionStorage，关掉标签页即失效，不会写进 localStorage。
+          </p>
+          <label class="field">
+            <input id="token-input" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" />
+          </label>
+          <div class="admin-token__acts">
+            <button class="btn" id="token-save" type="button">保存到本次会话</button>
+            <button class="btn btn--ghost" id="token-clear" type="button">清除</button>
+          </div>
+        </div>
+      </details>
 
       <!-- 基本信息 -->
       <div class="panel" id="panel-basic">

@@ -102,14 +102,22 @@ sh scripts/release.sh
 
 ## 四、日常更新：改文案 / 调首页
 
-全部在 `admin.html` 里做，**没有后端，所以「保存」= 导出文件**。
-前台已移除所有后台入口，需要手动输入 `https://elizond0.github.io/album/admin.html`：
+全部在 `admin.html` 里做。前台已移除所有后台入口，需要手动输入
+`https://elizond0.github.io/album/admin.html`：
 
 1. 打开后台，输管理口令。默认口令的哈希写在 `scripts/admin.js` 的 `DEFAULT_HASH`
    （公开仓库任何人可读，**进入后请立即在「基本信息 → 修改口令」改掉**，
    改动只存在本机浏览器，不同步其他设备）
-2. 改完点右上角 **「保存并导出 content.json」**
-3. 把下载的文件覆盖到 `data/content.json`，刷新页面即生效
+2. 首次使用先建一个 **Fine-grained token**（GitHub → Settings → Developer settings →
+   Fine-grained tokens）：Repository access 只选 `elizond0/album`，
+   Permissions 只勾 **Contents → Read and write**，有效期建议 90 天。
+   在后台「GitHub Token 设置」里填一次，**只存 sessionStorage，关标签页即失效**
+3. 改完点右上角 **「保存并发布」**，浏览器直接调 GitHub Contents API 提交
+   `data/content.json`，push 后 Pages 约 20~60 秒自动重建，强刷可见
+4. 没有 token / 网络不通时点 **「仅下载」**，走原来的「下载文件 → 手动推送」，两条路等价
+
+> token 不要图省事塞进 localStorage 或写进任何文件。它等价于仓库写权限，
+> 泄漏了别人能改 `index.html` 注入脚本。只放 sessionStorage、用 90 天过期、只授单仓库。
 
 后台能改的东西：
 
@@ -122,7 +130,11 @@ sh scripts/release.sh
 | 时间轴 / 随手记 / 愿望清单 / 事件 | 增删改 |
 | 照片库 | 描述、日期、省市区地点、隐藏（不上墙）、精选；支持按文件名/描述/地点搜索、按地点分组视图 |
 
-**改完记得导出。** 页面顶部会出现「有未导出的改动」提示，关页面前会拦一下。
+**改完记得发布。** 关页面前会拦一下未发布的改动。
+
+> 只有列表类编辑（文本、时间轴、随手记、心愿、事件、照片库）会亮「有未发布的改动」；
+> 基本信息/首页设置这几格是提交时统一从表单冲进 `db` 的（见 `syncFormToDb`），
+> 改完不亮提示属于已知行为，直接点发布即可。
 
 ---
 
@@ -357,6 +369,38 @@ GitHub Pages 给 `data/content.json` 的 `Cache-Control` 是 `max-age=600`，浏
 - ❌ 只滚到页面 45% 再量 → `content-visibility:auto` 的屏外卡片 `getBoundingClientRect()` 退化为 0，漏报
 - ✅ **滚到卡片区**（`[data-sec=photos]` 或 `.wall`），再逐元素比 `rect.right > clientWidth + 1`
 - ✅ 或者更直接：比 `卡片宽度` 与 `容器宽度 / 列数`，差 < 20px 才算对
+
+### 12. 后台「保存」有两处会悄悄把文件改坏
+
+**① 导出时删 `thumb`，会让每次提交变成 562 处 diff**
+
+`buildContent()` 早期写的是 `delete p.thumb`。但仓库里的 `content.json` 本来就存着
+`thumb`（值恒等于 `s`，实测 562 张全部相同）。结果是：点一次保存 → 562 个字段整体消失
+→ 下次跑 `build_content.py` 又加回来，来回横跳。commit 历史里全是噪音，看不出真正改了
+什么——而「commit 当更新日志」正是这套后台的用法。
+
+现在改成 `p.thumb = p.s || ""`，导出结果与 `build_content.py` 逐字节一致
+（实测 316858 B，diff 只剩 `builtAt` + 真正改的那个字段）。
+
+**② `renderPhotos()` 末尾不要 `markDirty()`**
+
+它是「按筛选条件重绘」，进后台首次渲染也会走这条路。原先在末尾无条件标脏，导致
+**一进页面就顶着「有未发布的改动」**，真改过反而分不清。标脏只在
+`#photo-list` 的 `input` 事件里做。
+
+> 反过来说，基本信息 / 首页设置 / 子页面设置这几格**本来就不标脏**——它们在提交时由
+> `syncFormToDb()` 统一从 DOM 冲进 `db`。这不是 bug，别「修」成给每个 input 绑监听。
+
+### 13. 直连 GitHub API 的两个细节（性能 + 断流）
+
+- **取远端 sha 别用 contents 接口**：`GET /contents/data/content.json` 会把整个 316 KB 的
+  base64 内容一起下回来，实测 **9.1 秒**；改用 `GET /git/trees/main:data`（只回目录清单，
+  两个条目）**0.6 秒**，返回的 `sha` 与 contents 接口完全一致（都是 blob sha）。
+- **316 KB 的响应会断流**：实测出现过 `IncompleteRead`（收到 412762 B，还差 24665 B）。
+  所以前端 `ghFetch()` 带 60 秒 abort，失败映射成 `NET` / `TIMEOUT` 两条中文提示。
+  提交失败先看是哪一条：`TIMEOUT` 就别重试了，直接走「仅下载」。
+- **409 只在内容真的变了才会出现**：用过期 sha 提交**完全相同**的内容，GitHub 返回 200
+  （blob 不变、commit 照建）。所以别拿「重复提交同内容」去测冲突分支，测不出来。
 
 **为什么本地能稳定复现**：本地 `python3 -m http.server` 没有媒体文件，图片全 404 → 卡片只能用 intrinsic 占位 → 100% 触发。线上因为隧道慢，首次访问同样是这个状态。**测这类「图片没到时的布局」必须让图片真的缺失或延迟**，图片一加载完 bug 就自己消失了。
 
