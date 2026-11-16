@@ -35,6 +35,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -54,10 +55,12 @@ LOG_F = HOME / "album-push.log"
 MAX_BODY = 2 * 1024 * 1024
 TOP_KEYS = {"version", "builtAt", "base", "meta", "events", "timeline", "quotes", "wishes", "photos", "videos"}
 RATE_WINDOW = 60
-RATE_MAX = 5          # 每分钟 5 次（正常改文案根本用不到）
-DROP_RATIO = 0.95     # 照片数掉到上次的 95% 以下就拒
+RATE_MAX = 5            # 单 IP 每分钟 5 次（正常改文案根本用不到）
+RATE_GLOBAL_MAX = 15    # 全局每分钟 15 次
+DROP_RATIO = 0.95       # 照片数掉到上次的 95% 以下就拒
 
-_hits = {}            # ip -> [ts, ...]
+_hits = {}              # ip -> [ts, ...]
+_g_hits = deque()       # 全局时间戳队列
 
 
 def log(msg):
@@ -203,14 +206,24 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get("CF-Connecting-IP") or self.client_address[0]
 
     def limited(self):
-        ip = self.client_ip()
         now = time.time()
+
+        # 全局闸门先判：出口 IP 可能是代理池（云沙箱、手机流量都会轮换），
+        # 只按 IP 限速等于没限——实测 7 次连打，日志里出现了 6 个不同 IP 全放行。
+        while _g_hits and now - _g_hits[0] > RATE_WINDOW:
+            _g_hits.popleft()
+        if len(_g_hits) >= RATE_GLOBAL_MAX:
+            return True
+
+        ip = self.client_ip()
         arr = [t for t in _hits.get(ip, []) if now - t < RATE_WINDOW]
         if len(arr) >= RATE_MAX:
             _hits[ip] = arr
             return True
+
         arr.append(now)
         _hits[ip] = arr
+        _g_hits.append(now)
         return False
 
     def do_OPTIONS(self):
