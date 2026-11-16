@@ -129,21 +129,32 @@ say "=== 4/8 处理视频 ==="
 ORIG=$P/orig_video
 mkdir -p "$ORIG" "$OUT/video/poster"
 
-# 4a. 把历史上遗留在 /srv/pub/video 里的**原片**挪进备份目录（旧流程产物，通常是空的）。
-#     判据必须用「体积」而不是「有没有这个文件」：video/ 里现在躺的是转码成品，
-#     同名成品明显比原片小；无脑迁移会把成品搬进 orig_video，接着 4c 发现 video/
-#     空了 → 16 个视频全量重转一遍（实测白白多跑 2 分钟）。
-#     兜底规则：同名文件在两边都在、且大小一样时按成品处理（保留，不迁移）。
+# 4a. /srv/pub/video 里可能残留旧流程丢下的**原片**，需要挪进备份目录。
+#
+#     判据必须同时满足两条，缺一不可：
+#       ① 同名文件不在 orig_video（没备份）
+#       ② 同名**封面**也不在 poster（没有封面 = 不是转码成品）
+#
+#     为什么不能用体积判：转码成品 9.9M / 原片 26.5M，体积差确实明显，
+#     但只要 video/ 空着，4c 就会重转，转出来的成品体积又和上次一样 —— 于是
+#     「迁走→重转→再迁走→再重转」可以无限循环。实测连跑两遍都白转 16 个视频。
+#     封面是转码成功的副产物，永远和成品同时出现，用它当「这是成品」的凭证最稳。
+#     体积只作为第二道保险：有备份、有封面、还比备份大 → 那才是真原片。
 for f in "$OUT"/video/*.mp4 "$OUT"/video/*.MP4 "$OUT"/video/*.mov "$OUT"/video/*.MOV; do
   [ -f "$f" ] || continue
   n=$(basename "$f")
   low=$(printf '%s' "$n" | tr 'A-Z' 'a-z')
   low=$(printf '%s' "$low" | sed 's/\.mov$/.mp4/')
+  key=${low%.mp4}
+  if [ -f "$OUT/video/poster/$key.jpg" ]; then
+    continue                          # 有封面 → 成品，原样保留
+  fi
   if [ ! -f "$ORIG/$low" ]; then
     mv "$f" "$ORIG/$low" && say "  迁移 $n -> $low"
-  elif [ "$(stat -c %s "$f")" -lt "$(stat -c %s "$ORIG/$low")" ]; then
-    say "  清理残留原片 $n（已有备份，video/ 里这个是干扰项）"
-    rm -f "$f"
+  elif [ "$(stat -c %s "$f")" -gt "$(stat -c %s "$ORIG/$low")" ]; then
+    mv -f "$f" "$ORIG/$low" && say "  替换备份 $n（比现有备份大，认作原片）"
+  else
+    say "  跳过 $n（无封面但已有更大备份，留着不动）"
   fi
 done
 
