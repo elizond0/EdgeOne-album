@@ -16,7 +16,14 @@
 :8443 {
 	encode zstd gzip
 
-	header Access-Control-Allow-Origin "*"
+	# CORS 只在这里发一次。⚠ Python 侧不要再发同名头：
+	# 两处都发会拼成 "*, https://elizond0.github.io"，浏览器判为非法多值直接拒绝。
+	header {
+		Access-Control-Allow-Origin "*"
+		Access-Control-Allow-Methods "POST, GET, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type, X-Admin-Key"
+		Access-Control-Max-Age "600"
+	}
 
 	# 后台写入口：口令校验 / 内容校验 / 旧版存档 / 提交 GitHub 全在 album-push.py 里
 	handle /api/* {

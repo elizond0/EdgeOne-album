@@ -186,11 +186,10 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "album-push/1.0"
 
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", ORIGIN)
-        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Admin-Key")
-        self.send_header("Access-Control-Max-Age", "600")
-        self.send_header("Vary", "Origin")
+        # CORS 头一律由 Caddy 发（Caddyfile 里那几行）。
+        # 这里再发一次会变成 "*, https://elizond0.github.io" 两个值，
+        # 浏览器直接判 CORS 失败——实测就是这么挂的，改完 header 只剩一个值才通。
+        pass
 
     def _json(self, code, obj):
         body = json.dumps(obj, ensure_ascii=False).encode()
