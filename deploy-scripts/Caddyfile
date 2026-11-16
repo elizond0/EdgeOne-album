@@ -30,14 +30,19 @@
 		reverse_proxy 127.0.0.1:8787
 	}
 
+	# index.json 必须单独一条：no-store 写在同一个 handle 里会被上面的
+	# "public, max-age=604800" 盖掉（Caddy 的 header 指令不按书写顺序执行，
+	# 实测改完 index.json 变成了 max-age=604800 —— 隧道换域名后会拿到旧清单）。
+	handle /index.json {
+		root * /srv/pub
+		header Cache-Control "no-store"
+		file_server
+	}
+
 	# 其余全部是静态媒体
 	handle {
 		root * /srv/pub
 		file_server
-
 		header Cache-Control "public, max-age=604800"
-
-		@idx path /index.json
-		header @idx Cache-Control "no-store"
 	}
 }
