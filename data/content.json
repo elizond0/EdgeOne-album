@@ -1,6 +1,6 @@
 {
  "version": 1,
- "builtAt": "2026-11-15",
+ "builtAt": "2026-11-16",
  "base": "",
  "meta": {
   "anniversary": "2025-12-05",
@@ -39,8 +39,9 @@
    "siteShort": "Album"
   },
   "home": {
-   "timelineCount": 5,
+   "timelineCount": 6,
    "photoRows": 2,
+   "photoRowsMax": 6,
    "quoteRows": 1,
    "wishCount": 8,
    "showVideos": "auto",
@@ -50,8 +51,7 @@
     "quotes",
     "wishes",
     "videos"
-   ],
-   "photoRowsMax": 6
+   ]
   },
   "pages": {
    "photosCols": 3,
