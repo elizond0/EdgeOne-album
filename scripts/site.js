@@ -315,6 +315,17 @@
     }
 
     sync();
+    // 一铺好就主动补一次，别把补页交给「观察器什么时候回调」这种不确定的事。
+    // 桌面/平板首屏常把整段照片区包进去：more 块一创建就在视口附近，观察器却未必
+    // 交得出那一次 isIntersecting 回调 → 实测 768 档永远停在 2 排（8 张），
+    // 卡片总高 605px 在 1024px 视口内，用户看到的就是「照片墙只有两排」。
+    // 判据只认同一个坐标系：grid 底边是否还在首屏内。别混用「more 的位置」——
+    // 它下面还有「查看全部」链接，判出来的边界比网格实际底边高一截。
+    (function prime() {
+      if (more.hidden) return;                      // 已铺满 cap，没什么可补
+      if (grid.getBoundingClientRect().bottom > window.innerHeight) return; // 已越过首屏，交给滚动
+      if (grow()) requestAnimationFrame(prime);      // 补一批后网格仍没占满首屏，接着补
+    })();
     if (btn) btn.addEventListener("click", function () { grow(); checkNear(); });
     if (!("IntersectionObserver" in window)) {
       more.hidden = true;
