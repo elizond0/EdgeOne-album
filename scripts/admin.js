@@ -35,7 +35,7 @@
   /* ---------- 登录：SHA-256 口令校验（纯前端，不涉及服务器） ---------- */
   // 说明：这是「本地编辑锁」，不是账号系统。哈希写在仓库里，懂技术的人可以暴破，
   // 真正的保护依然是「链接不公开 + 禁止搜索引擎收录」。它挡的是随手翻到链接的人。
-  const DEFAULT_HASH = "efb5f59fb1ef3f212cc10d57d8519634d6342b0a3268818dd0aa5f89d96fd204"; // our-story-2025
+  const DEFAULT_HASH = "a0fdc4cb5cee33fc4d8d54de87e243fa1de7756a9c5a24b7035de95de0462e32"; // our-story-2025
   const HASH_STORE = "album-admin-hash";
   const KEY_STORE = "album-admin-key";
 
@@ -553,10 +553,63 @@
     TOO_BIG: "文件太大，GitHub 拒绝了这次提交",
     NET: "连不上 GitHub（网络被拦或超时），可以改用「仅下载」",
     TIMEOUT: "等了两分钟没回音，网络太慢或被拦了，改用「仅下载」更快",
+    BAD_KEY: "口令不对：后台登录口令要跟 NAS 上的 push-secret 一致",
+    NO_KEY: "会话里没口令，退出重进一次后台",
+    NO_NAS: "连不上 NAS 的写入口（NAS 离线 / 隧道刚换域名还没同步）",
+    TOO_FAST: "一分钟内提交太多次了，歇一会儿再点",
+    NO_NAS_NO_TOKEN: "NAS 不在线，又没配 GitHub Token。等 NAS 恢复，或展开下面填个 token 直连",
   };
 
-  // 统一出口：传 content.json 全文，提交到仓库。换传输层只改这个函数。
-  async function pushContent(json) {
+  // ---------- 传输层 A：NAS 代理（默认走这条，token 不进浏览器） ----------
+  async function nasBase() {
+    if (window.Site && Site.base) return String(Site.base).replace(/\/+$/, "");
+    try {
+      const r = await fetch(`base.json?t=${Date.now()}`, { cache: "no-store" });
+      return String((await r.json()).base || "").replace(/\/+$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  async function nasAlive(base) {
+    try {
+      const r = await ghFetch(`${base}/api/health`, { cache: "no-store" }, 5000);
+      if (!r.ok) return false;
+      const j = await r.json();
+      return !!j.key_set;          // 服务在但没设口令，视同不可用
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function nasPush(json) {
+    const base = await nasBase();
+    if (!base) throw new Error("NO_NAS");
+    const key = getKey();
+    if (!key) throw new Error("NO_KEY");
+
+    let r;
+    try {
+      r = await ghFetch(`${base}/api/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": key },
+        body: json,
+      }, 120000);
+    } catch (e) {
+      throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NO_NAS");
+    }
+
+    let j = {};
+    try { j = await r.json(); } catch (e) {}
+    if (r.status === 401) throw new Error("BAD_KEY");
+    if (r.status === 429) throw new Error("TOO_FAST");
+    if (r.status === 409) throw new Error("CONFLICT");
+    if (!r.ok || !j.ok) throw new Error(j.error || `NAS 返回 HTTP ${r.status}`);
+    return { commit: j.commit, via: "nas" };
+  }
+
+  // ---------- 传输层 B：直连 GitHub（NAS 不在线时的备用，需要 token） ----------
+  async function directPush(json) {
     const token = getToken();
     if (!token) throw new Error("NO_TOKEN");
 
@@ -602,7 +655,22 @@
       try { msg = (await r.json()).message || ""; } catch (e) {}
       throw new Error(`提交失败 HTTP ${r.status}${msg ? "：" + msg : ""}`);
     }
-    return r.json();
+    const j = await r.json();
+    return { commit: (j.commit || {}).sha || "", via: "direct" };
+  }
+
+  // ---------- 统一出口：换传输层只改这里，页面和编辑逻辑不用动 ----------
+  // 顺序：NAS 代理优先（口令换写权限，token 不出浏览器）→ 不在线时退直连 → 都不行就报错。
+  async function pushContent(json) {
+    const base = await nasBase();
+    if (base && (await nasAlive(base))) {
+      return await nasPush(json);
+    }
+    if (getToken()) {
+      const r = await directPush(json);
+      return { ...r, note: "NAS 连不上，已改用直连 GitHub" };
+    }
+    throw new Error("NO_NAS_NO_TOKEN");
   }
 
   /* ---------- Token 面板 ---------- */
@@ -635,14 +703,6 @@
     const btn = $("#save-all");
     const json = JSON.stringify(buildContent(), null, 1);
 
-    if (!getToken()) {
-      const box = $("#token-box");
-      if (box) box.open = true;
-      $("#token-input")?.focus();
-      toast("先填 GitHub Token 才能直接发布；也可以点「仅下载」", true);
-      return;
-    }
-
     btn.disabled = true;
     const old = btn.textContent;
     btn.textContent = "提交中…";
@@ -650,10 +710,16 @@
       const r = await pushContent(json);
       dirty = false;
       $("#dirty-tip").hidden = true;
-      const c = (r && r.commit && r.commit.sha || "").slice(0, 7);
-      toast(`已提交${c ? " " + c : ""}，Pages 约 20~60 秒构建，之后强刷可见`);
+      const c = String((r && r.commit) || "").slice(0, 7);
+      const via = r && r.via === "direct" ? "（直连）" : "";
+      toast(`${r && r.note ? r.note + "，" : ""}已提交${via}${c ? " " + c : ""}，Pages 约 20~60 秒构建`);
     } catch (e) {
-      toast(GH_ERR[e.message] || e.message || "提交失败", true);
+      const msg = GH_ERR[e.message] || e.message || "提交失败";
+      toast(msg, true);
+      if (e.message === "NO_NAS_NO_TOKEN" || e.message === "NO_NAS") {
+        const box = $("#token-box");
+        if (box) box.open = true;
+      }
     } finally {
       btn.disabled = false;
       btn.textContent = old;
