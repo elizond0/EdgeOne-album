@@ -18,10 +18,12 @@
 
 	# CORS 只在这里发一次。⚠ Python 侧不要再发同名头：
 	# 两处都发会拼成 "*, https://elizond0.github.io"，浏览器判为非法多值直接拒绝。
+	# X-Admin-Auth 是进后台拿到的令牌头（/api/save 用它代替明文口令），
+	# 漏了它浏览器的预检就会把带令牌的提交整个拦掉——表现为「一点发布就报连不上 NAS」。
 	header {
 		Access-Control-Allow-Origin "*"
 		Access-Control-Allow-Methods "POST, GET, OPTIONS"
-		Access-Control-Allow-Headers "Content-Type, X-Admin-Key"
+		Access-Control-Allow-Headers "Content-Type, X-Admin-Key, X-Admin-Auth"
 		Access-Control-Max-Age "600"
 	}
 

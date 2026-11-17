@@ -26,7 +26,13 @@ sleep 3
 
 # 后台写入口：只监听 127.0.0.1，公网只能经 Caddy 的 /api/* 进来。
 # 没配口令（push-secret 不存在）也照起，健康检查会报 key_set=false，方便排查。
+#
+# 2026-11-17 起加了 /api/auth（进后台的口令校验）。新脚本从 GitHub 拉下来后
+# 光覆盖文件没用——pid 1 跑的还是老进程，所以这里作为「唯一的启动者」：
+# 起来时先把上一轮的 album-push 杀干净，保证跑的一定是磁盘上这份。
 if [ -f $P/album-push.py ]; then
+  pkill -f 'album-push.py' 2>/dev/null
+  sleep 1
   python3 $P/album-push.py >>$P/push.log 2>&1 &
 fi
 
