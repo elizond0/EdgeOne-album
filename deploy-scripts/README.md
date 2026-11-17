@@ -107,3 +107,55 @@ tail -f /var/lib/tailscale/base-sync.log     # 看它在干什么
 - 视频「要不要重转」只能看**封面在不在**（`video/poster/<名>.jpg`）。只比体积会掉进
   「迁走原片 → video/ 空了 → 重转 → 再迁走」的死循环，实测连跑两遍白转 16 个视频。
   自检办法：连跑两遍 `nas-setup.sh`，第二遍 4c 必须全部 `SKIP`。
+
+## 后台写入口 album-push.py（含进门口令）
+
+后台 `/admin.html` 现在有两道门，都落在 NAS 上：
+
+| 时机 | 前端调的接口 | 校验方式 |
+|---|---|---|
+| 打开后台，先输 6 位口令 | `POST /api/auth` | PBKDF2 比对 `push-secret`，通过则发一个 12 小时令牌 |
+| 点「保存并发布」 | `POST /api/save` | 优先认 `X-Admin-Auth: <令牌>`，退回 `X-Admin-Key: <口令>` |
+
+> 为什么口令不能放前端：6 位数字只有 10^6 个候选。任何写在 JS 里的哈希/明文
+> 都是公开的，等于没设。所以「对不对」只有 NAS 知道，浏览器里只存一个一次性令牌
+> （`sessionStorage`，关标签页即失效）。
+
+### 首次部署 / 改口令
+
+```sh
+# 容器内（$P 默认 /var/lib/tailscale）
+cd $P
+# 1) 拿到新版脚本（容器能出网就能直接拉，不用再逐段粘贴）
+wget -qO album-push.py https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/album-push.py
+wget -qO Caddyfile     https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/Caddyfile
+
+# 2) 设口令（写 push-secret，pbkdf2，0600）
+python3 album-push.py --set-key '125728'
+
+# 3) 让 Caddy 认新的 CORS 头（必须校验，语法错会让整站连照片一起挂）
+caddy validate --config $P/Caddyfile && caddy reload --config $P/Caddyfile
+
+# 4) 重启写入口，跑的一定是磁盘上这份
+pkill -f album-push.py; sleep 1
+python3 album-push.py >>$P/push.log 2>&1 &
+
+# 5) 自检
+python3 album-push.py --check     # 期望：secret: pbkdf2 | token: 有
+curl -s localhost:8787/api/health # 期望：{"ok":true,"key_set":true,"pbkdf2":true}
+```
+
+### CORS 有个必须注意的点
+
+`Caddyfile` 的 `Access-Control-Allow-Headers` 必须包含 **`X-Admin-Auth`**。
+漏了它，浏览器预检会把带令牌的提交整个拦掉，前端表现是「一点发布就报连不上 NAS」——
+和「NAS 离线」一模一样，很容易查错方向。2026-11-17 就是踩了这个。
+
+### 口令轮换
+
+```sh
+python3 album-push.py --set-key '<新口令>'
+pkill -f album-push.py; sleep 1; python3 album-push.py >>$P/push.log 2>&1 &
+```
+
+旧令牌存在内存里，重启即全部作废——这是有意的：换口令就该踢掉所有已登录会话。
