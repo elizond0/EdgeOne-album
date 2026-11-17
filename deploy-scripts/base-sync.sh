@@ -73,15 +73,16 @@ tunnel_url() {
 }
 
 # 隧道不止要「有地址」，还要「真的能打开」——quick tunnel 建立后 DNS 有几十秒空窗
+# 预算 8 次 × 15s = 2 分钟：换来的是「不因为 DNS 还没传播就去换新隧道」。
 tunnel_ready() {
   u="$1"
   i=0
-  while [ $i -lt 4 ]; do
+  while [ $i -lt 8 ]; do
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$u/index.json" 2>/dev/null)
     if [ "$code" = "200" ]; then return 0; fi
     i=$((i + 1))
-    log "  隧道未就绪（HTTP ${code:-超时}），10s 后重试 $i/4"
-    sleep 10
+    log "  隧道未就绪（HTTP ${code:-超时}），15s 后重试 $i/8"
+    sleep 15
   done
   return 1
 }
@@ -98,18 +99,53 @@ tunnel_ready() {
 # 所以：地址同步之前先确认隧道真的活着，死了就换一条新的。
 # 判据只有一条 —— 从公网 curl 得到 200。进程在不在、日志写了什么，都只是线索。
 
+# 单实例锁：watch 常驻和手动执行不能同时动隧道。
+# 2026-11-17 实测踩过：watch 每 300s 一轮，手动那次也在跑，两边都判定「隧道打不开」，
+# 于是一个接一个地换隧道，域名像抽奖。锁用 mkdir 的原子性，pid 文件辅助识别陈旧锁。
+LOCK="$P/.base-sync.lock"
+lock_acquire() {
+  if mkdir "$LOCK" 2>/dev/null; then
+    echo $$ > "$LOCK/pid" 2>/dev/null
+    return 0
+  fi
+  LP=$(cat "$LOCK/pid" 2>/dev/null)
+  if [ -z "$LP" ] || ! kill -0 "$LP" 2>/dev/null; then
+    rm -rf "$LOCK" 2>/dev/null
+    if mkdir "$LOCK" 2>/dev/null; then echo $$ > "$LOCK/pid" 2>/dev/null; return 0; fi
+  fi
+  return 1
+}
+lock_release() { rm -rf "$LOCK" 2>/dev/null; }
+
+# 新隧道建好后，等它真的能从公网打开。quick tunnel 的 DNS 传播常见 20~60s，
+# 这段空窗里「打不开」是正常现象，不是故障——所以这里只等，不下判决。
+wait_public() {
+  u="$1"; budget="${2:-14}"
+  i=0
+  while [ $i -lt "$budget" ]; do
+    sleep 5
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$u/index.json" 2>/dev/null)
+    if [ "$code" = "200" ]; then log "READY $u（$((i * 5 + 5))s）"; return 0; fi
+    i=$((i + 1))
+  done
+  log "WARN $u 等了 $((budget * 5))s 还打不开，交给下一轮"
+  return 1
+}
+
 # 起一条新 quick tunnel，并把 cf.log 清空（否则旧域名会一直被 tail -1 读到）
 start_tunnel() {
   OLD_PID=$(ps w 2>/dev/null | awk '/[c]loudflared tunnel/{print $1; exit}')
   [ -n "$OLD_PID" ] && { log "HEAL 停掉旧 cloudflared（pid $OLD_PID）"; kill "$OLD_PID" 2>/dev/null; sleep 2; }
   : > "$P/cf.log"
   nohup "$P/cloudflared" tunnel --url http://127.0.0.1:8443 --no-autoupdate >>"$P/cf.log" 2>&1 &
+  date +%s > "$P/.tunnel_at" 2>/dev/null
   i=0
   while [ $i -lt 20 ]; do
     sleep 3
     NEW=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$P/cf.log" 2>/dev/null | tail -1)
     if [ -n "$NEW" ]; then
       log "HEAL 新隧道已建：$NEW"
+      wait_public "$NEW" 14
       return 0
     fi
     i=$((i + 1))
@@ -123,6 +159,11 @@ ensure_tunnel() {
   [ -n "$URL" ] && return 0
   [ -x "$P/cloudflared" ] || { log "SKIP 没有 $P/cloudflared"; return 1; }
 
+  if ! lock_acquire; then
+    log "SKIP 另一轮正在处理隧道，本轮不动"
+    return 0
+  fi
+
   # Caddy 本地这一层先看一眼：本地都不通，重启隧道是白忙
   LC=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8443/index.json 2>/dev/null)
   if [ "$LC" != "200" ]; then
@@ -133,6 +174,7 @@ ensure_tunnel() {
   if [ -z "$PID" ]; then
     log "HEAL cloudflared 进程不在"
     start_tunnel
+    lock_release
     return $?
   fi
 
@@ -140,14 +182,27 @@ ensure_tunnel() {
   if [ -z "$U" ]; then
     log "HEAL cf.log 里没有隧道地址"
     start_tunnel
+    lock_release
     return $?
   fi
+
+  # 刚起的隧道还在 DNS 传播期。这时候判「打不开」就再换一条，只会连环换。
+  AT=$(cat "$P/.tunnel_at" 2>/dev/null)
+  NOW=$(date +%s)
+  case "$AT" in
+    ''|*[!0-9]*) : ;;
+    *) if [ $((NOW - AT)) -lt 180 ]; then
+         log "WAIT 隧道 $((NOW - AT))s 前刚建，180s 内不判死"
+         lock_release
+         return 0
+       fi ;;
+  esac
 
   # 三次探测，全失败才重启 —— 单次抖动不该换来一条新隧道
   i=0
   while [ $i -lt 3 ]; do
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$U/index.json" 2>/dev/null)
-    [ "$code" = "200" ] && return 0
+    [ "$code" = "200" ] && { lock_release; return 0; }
     i=$((i + 1))
     [ $i -lt 3 ] && sleep 5
   done
@@ -158,6 +213,7 @@ ensure_tunnel() {
     log "HEAL $U 连不上（HTTP ${code:-超时}）"
   fi
   start_tunnel
+  lock_release
   return $?
 }
 
