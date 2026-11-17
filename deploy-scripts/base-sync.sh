@@ -65,11 +65,23 @@ trim_log() {
   fi
 }
 
-# 从 cloudflared 日志里取最后一个出现的隧道地址
+# 从 cloudflared 日志里取隧道地址。
+# 2026-11-17 踩坑：日志里除了真正的隧道域名，还有 cloudflared 请求接口用的
+# https://api.trycloudflare.com —— 用宽松正则 + tail -1 会抓到后者，把整站指到
+# Cloudflare 的 API 上（HTTP 405，照片全灭）。所以：
+#   1) 优先取「Your quick Tunnel has been created」后面那几行，那是官方公布的地址
+#   2) 兜底时要求子域名 ≥ 8 个字符，api（3 个）这类接口域名自然被排除
+extract_url() {
+  [ -f "$P/cf.log" ] || return
+  u=$(grep -A3 'Your quick Tunnel has been created' "$P/cf.log" 2>/dev/null \
+      | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)
+  [ -z "$u" ] && u=$(grep -oE 'https://[a-z0-9-]{8,}\.trycloudflare\.com' "$P/cf.log" 2>/dev/null | tail -1)
+  printf '%s' "$u"
+}
+
 tunnel_url() {
   [ -n "$URL" ] && { echo "$URL"; return; }
-  [ -f "$P/cf.log" ] || return
-  grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$P/cf.log" 2>/dev/null | tail -1
+  extract_url
 }
 
 # 隧道不止要「有地址」，还要「真的能打开」——quick tunnel 建立后 DNS 有几十秒空窗
@@ -142,7 +154,7 @@ start_tunnel() {
   i=0
   while [ $i -lt 20 ]; do
     sleep 3
-    NEW=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$P/cf.log" 2>/dev/null | tail -1)
+    NEW=$(extract_url)
     if [ -n "$NEW" ]; then
       log "HEAL 新隧道已建：$NEW"
       wait_public "$NEW" 14
