@@ -26,6 +26,7 @@
   let list = [];     // 当前筛选后的照片
   let cfg = { photosCols: 3, photosRows: 20, photosPerPage: 60 };
   let page = 1;
+  let lastPlace = null;   // 上一次生效的地点筛选，用来判断「要不要把页码打回 1」
 
   function placeKey(p) {
     const pl = p.place || {};
@@ -207,9 +208,12 @@
   function startList() {
     const sel = document.getElementById("place-filter");
     const want = sel ? sel.value : "";
+    const changed = want !== lastPlace;
     list = want ? all.filter((p) => placeKey(p) === want) : all;
-    // 筛选一变，页码必须归 1，否则可能落在越界页上显示空白
-    page = 1;
+    // 筛选变了才归 1：否则「#p2 深链 / 就地重渲染」会被无条件打回第一页。
+    // （2026-11-17 实测：location.hash 明明是 #p2，页面停在第 1 页，就是这里干的。）
+    lastPlace = want;
+    if (changed) page = 1;
     render();
   }
 
