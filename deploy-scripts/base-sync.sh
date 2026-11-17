@@ -86,6 +86,81 @@ tunnel_ready() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# 隧道自愈
+# ---------------------------------------------------------------------------
+# 2026-11-17 事故：Cloudflare 把这条 quick tunnel 回收了（日志里
+# "Unauthorized: Tunnel not found"），但 cloudflared 进程还活着、cf.log 里
+# 还留着早上 07:36 的旧域名。于是 base-sync 每 5 分钟读到同一个已失效的域名、
+# curl 打不开、记 FAIL 就走了 —— 它能「追平地址变化」，却追不平「隧道已死」。
+# 结果站点所有照片挂了一小时，直到人肉发现。
+#
+# 所以：地址同步之前先确认隧道真的活着，死了就换一条新的。
+# 判据只有一条 —— 从公网 curl 得到 200。进程在不在、日志写了什么，都只是线索。
+
+# 起一条新 quick tunnel，并把 cf.log 清空（否则旧域名会一直被 tail -1 读到）
+start_tunnel() {
+  OLD_PID=$(ps w 2>/dev/null | awk '/[c]loudflared tunnel/{print $1; exit}')
+  [ -n "$OLD_PID" ] && { log "HEAL 停掉旧 cloudflared（pid $OLD_PID）"; kill "$OLD_PID" 2>/dev/null; sleep 2; }
+  : > "$P/cf.log"
+  nohup "$P/cloudflared" tunnel --url http://127.0.0.1:8443 --no-autoupdate >>"$P/cf.log" 2>&1 &
+  i=0
+  while [ $i -lt 20 ]; do
+    sleep 3
+    NEW=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$P/cf.log" 2>/dev/null | tail -1)
+    if [ -n "$NEW" ]; then
+      log "HEAL 新隧道已建：$NEW"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  log "HEAL 60s 内没拿到新域名，cloudflared 可能起不来（看 $P/cf.log）"
+  return 1
+}
+
+# 隧道挂了就拉起来。--url 手填地址时不动（那是人在调试，别替他做决定）。
+ensure_tunnel() {
+  [ -n "$URL" ] && return 0
+  [ -x "$P/cloudflared" ] || { log "SKIP 没有 $P/cloudflared"; return 1; }
+
+  # Caddy 本地这一层先看一眼：本地都不通，重启隧道是白忙
+  LC=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8443/index.json 2>/dev/null)
+  if [ "$LC" != "200" ]; then
+    log "WARN 本地 Caddy 返回 ${LC:-超时}（不是 200），隧道就算起来也没东西可发"
+  fi
+
+  PID=$(ps w 2>/dev/null | awk '/[c]loudflared tunnel/{print $1; exit}')
+  if [ -z "$PID" ]; then
+    log "HEAL cloudflared 进程不在"
+    start_tunnel
+    return $?
+  fi
+
+  U=$(tunnel_url)
+  if [ -z "$U" ]; then
+    log "HEAL cf.log 里没有隧道地址"
+    start_tunnel
+    return $?
+  fi
+
+  # 三次探测，全失败才重启 —— 单次抖动不该换来一条新隧道
+  i=0
+  while [ $i -lt 3 ]; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$U/index.json" 2>/dev/null)
+    [ "$code" = "200" ] && return 0
+    i=$((i + 1))
+    [ $i -lt 3 ] && sleep 5
+  done
+
+  if grep -q 'Tunnel not found' "$P/cf.log" 2>/dev/null; then
+    log "HEAL 日志里有 Tunnel not found：这条隧道已被 Cloudflare 回收"
+  else
+    log "HEAL $U 连不上（HTTP ${code:-超时}）"
+  fi
+  start_tunnel
+  return $?
+}
+
 sync_once() {
   TOK=$(cat "$TOKF" 2>/dev/null | tr -d ' \r\n')
   if [ -z "$TOK" ]; then
@@ -161,11 +236,13 @@ sync_once() {
 if [ -n "$WATCH" ]; then
   log "== base-sync 常驻启动，间隔 ${WATCH}s =="
   while :; do
+    ensure_tunnel      # 先确认隧道活着，死了换新的；再谈地址同步
     sync_once
     trim_log
     sleep "$WATCH"
   done
 else
+  ensure_tunnel
   sync_once
   trim_log
 fi
