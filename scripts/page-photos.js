@@ -107,6 +107,10 @@
     });
     wall.appendChild(frag);
 
+    // 整页直接开下。别指望 IntersectionObserver —— CSS columns 下浏览器算不出
+    // 列尾那几张的真实位置，实测每列最后 9 张永远不加载（一页缺 28 张）。
+    if (Site.loadWallNow) Site.loadWallNow(wall);
+
     renderPager(pages, start, count);
     renderCount(start, count);
   }

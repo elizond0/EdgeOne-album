@@ -175,16 +175,20 @@
     if (!img || !url) return;
     imgQueue.push(function () {
       let done = false;
+      let timer = 0;
       const finish = function () {
         if (done) return;           // load / error / 超时 三者只认第一个
         done = true;
+        clearTimeout(timer);        // ← 成功也要清，否则 45 秒后还会再来一遍 finish
         imgActive = Math.max(0, imgActive - 1);
         imgPump();
       };
       img.addEventListener("load", finish, { once: true });
       img.addEventListener("error", finish, { once: true });
-      // 请求被浏览器丢弃（组件已卸载、网络挂起）时不会有 load/error，靠超时解锁队列
-      setTimeout(finish, 45000);
+      // 请求被浏览器丢弃（组件已卸载、网络挂起）时不会有 load/error，靠超时解锁队列。
+      // 45 秒是上限不是常态；一页 60 张、并发 6，只要有一批卡住就会连锁拖慢整页，
+      // 所以这里成功路径必须清计时器，不能让「已加载完的图」继续占着名额到期才释放。
+      timer = setTimeout(finish, 45000);
       img.src = url;
     });
     imgPump();
@@ -281,6 +285,24 @@
     wallIO.observe(node);
     Site.reveal(node, (i % 8) * 45);
     return node;
+  };
+
+  /* ---------- 整页直接开下（分页专用） ----------
+     为什么不能只靠 IntersectionObserver：照片墙是 CSS columns 布局，
+     浏览器给多列元素算相交矩形时，列末那几张经常被判成「不在视口内」，
+     于是整列尾部永远不触发懒加载——实测一页 60 张里固定缺 28 张，
+     而且缺的都是每列最后 9 个（idx 9-18/31-39/51-59），看着就是「有些照片不显示」。
+
+     分页场景本身没有「省流量」的必要：用户点页码就是为了看这一页，
+     一页最多 240 张，队列本来就有并发闸门。所以渲染完就整页排进队列，
+     把探测的责任交回给确定性的排队逻辑。首页那种「滚到才补下一批」仍然走 IO。 */
+  Site.loadWallNow = function (root) {
+    if (!root) return;
+    root.querySelectorAll("img[data-src]").forEach(function (im) {
+      Site.guardImg(im);
+      Site.loadImg(im, im.dataset.src);
+      im.removeAttribute("data-src");
+    });
   };
 
   /* ---------- 首页照片：首屏 N 排 + 滚到就补下一批 ----------
