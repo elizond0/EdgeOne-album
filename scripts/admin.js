@@ -32,54 +32,18 @@
     toastTimer = setTimeout(() => (t.hidden = true), 2800);
   }
 
-  /* ---------- 登录：SHA-256 口令校验（纯前端，不涉及服务器） ---------- */
-  // 说明：这是「本地编辑锁」，不是账号系统。哈希写在仓库里，懂技术的人可以暴破，
-  // 真正的保护依然是「链接不公开 + 禁止搜索引擎收录」。它挡的是随手翻到链接的人。
-  const DEFAULT_HASH = "a0fdc4cb5cee33fc4d8d54de87e243fa1de7756a9c5a24b7035de95de0462e32"; // our-story-2025
-  const HASH_STORE = "album-admin-hash";
-  const KEY_STORE = "album-admin-key";
+  /* ---------- 口令：只在「保存并发布」时用一次 ----------
+     2026-11-17 改：去掉了本机 SHA-256 登录锁（哈希写在公开仓库里、无盐，
+     只挡得住随手点链接的人，却要每次登录多填一次，还会和 NAS 的 push-secret
+     混淆成两套口令）。现在编辑不设卡，只在真正写回仓库时向 NAS 验一次身份。
+     浏览器里不留任何副本：不写 localStorage，也不写 sessionStorage。 */
+  const KEY_STORE = "album-admin-key"; // 旧版遗留键名，仅用于清理
 
-  async function sha256(text) {
-    const buf = new TextEncoder().encode(text);
-    const dig = await crypto.subtle.digest("SHA-256", buf);
-    return [...new Uint8Array(dig)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
-
-  const currentHash = () => localStorage.getItem(HASH_STORE) || DEFAULT_HASH;
-  function getKey() { return sessionStorage.getItem(KEY_STORE) || ""; }
-
-  $("#key-ok").addEventListener("click", async () => {
-    const k = $("#key-input").value.trim();
-    const err = $("#key-error");
-    if (k.length < 6) { err.textContent = "口令至少 6 位。"; err.hidden = false; return; }
-    let h;
-    try {
-      h = await sha256(k);
-    } catch (e) {
-      err.textContent = "当前页面无法校验口令（需要 https 或 localhost 打开）。";
-      err.hidden = false;
-      return;
-    }
-    if (h !== currentHash()) {
-      err.textContent = "口令不对。忘了的话清掉本站的浏览器存储，会回到默认口令。";
-      err.hidden = false;
-      return;
-    }
-    err.hidden = true;
-    sessionStorage.setItem(KEY_STORE, k);
-    enter();
-  });
-  $("#key-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#key-ok").click(); });
-  $("#logout-btn").addEventListener("click", (e) => {
-    e.preventDefault();
-    sessionStorage.removeItem(KEY_STORE);
-    location.reload();
-  });
+  function getKey() { return ""; }     // 每次发布都重新问，不缓存
 
   async function enter() {
-    $("#login-view").hidden = true;
     $("#panel-view").hidden = false;
-    $("#logout-btn").hidden = false;
+    $("#logout-btn").hidden = true;
     const ok = await Site.load();
     if (!ok.ready) { toast("内容加载失败：" + Site.error, true); return; }
     db = JSON.parse(JSON.stringify(Site.db));
@@ -87,6 +51,14 @@
     ["timeline", "quotes", "wishes", "events"].forEach(renderList);
     renderPhotos();
   }
+
+  // 清理旧版本留下的本机哈希与明文口令
+  try {
+    localStorage.removeItem("album-admin-hash");
+    sessionStorage.removeItem(KEY_STORE);
+  } catch (e) { /* 隐私模式下忽略 */ }
+
+  enter();
 
   /* ---------- 标签页 ---------- */
   $("#tabs").addEventListener("click", (e) => {
@@ -206,22 +178,44 @@
     toast("已写入待保存内容，点右上角「保存」导出");
   });
 
-  /* ---------- 修改口令 ---------- */
-  $("#save-key").addEventListener("click", async () => {
-    const nk = $("#new-key").value.trim();
-    const tip = $("#key-tip");
-    if (nk.length < 6) { toast("新口令至少 6 位", true); return; }
-    try {
-      localStorage.setItem(HASH_STORE, await sha256(nk));
-    } catch (e) {
-      toast("当前环境无法计算哈希，请在 https 或 localhost 下操作", true);
+  /* ---------- 发布口令弹窗 ---------- */
+  // 只在点「保存并发布」时打开一次；口令用完即弃，不落任何存储。
+  let gateResolve = null;
+  let gateRetry = false;
+
+  function askKey(msg) {
+    const sec = $("#publish-gate");
+    const err = $("#gate-error");
+    const inp = $("#gate-input");
+    sec.hidden = false;
+    inp.value = "";
+    inp.focus();
+    if (msg) { err.textContent = msg; err.hidden = false; } else { err.hidden = true; }
+    return new Promise((res) => { gateResolve = res; });
+  }
+
+  function closeGate(val) {
+    $("#publish-gate").hidden = true;
+    const r = gateResolve;
+    gateResolve = null;
+    if (r) r(val);
+  }
+
+  $("#gate-ok").addEventListener("click", () => {
+    const k = $("#gate-input").value.trim();
+    if (k.length < 6) {
+      const err = $("#gate-error");
+      err.textContent = "口令至少 6 位。";
+      err.hidden = false;
       return;
     }
-    sessionStorage.setItem(KEY_STORE, nk);
-    $("#new-key").value = "";
-    tip.textContent = "已改为新口令。忘掉的话清掉本站浏览器存储即可回到默认口令。";
-    toast("口令已修改（仅本机生效）");
+    closeGate(k);
   });
+  $("#gate-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("#gate-ok").click();
+    if (e.key === "Escape") closeGate("");
+  });
+  $("#gate-cancel").addEventListener("click", () => closeGate(""));
 
   /* ---------- 站点文本 ---------- */
   function renderTexts() {
@@ -553,8 +547,9 @@
     TOO_BIG: "文件太大，GitHub 拒绝了这次提交",
     NET: "连不上 GitHub（网络被拦或超时），可以改用「仅下载」",
     TIMEOUT: "等了两分钟没回音，网络太慢或被拦了，改用「仅下载」更快",
-    BAD_KEY: "口令不对：后台登录口令要跟 NAS 上的 push-secret 一致",
-    NO_KEY: "会话里没口令，退出重进一次后台",
+    BAD_KEY: "口令不对：要跟 NAS 上 push-secret 设的是同一个",
+    CANCELLED: "已取消发布（没输口令，什么都没提交）",
+    NO_KEY: "没输口令",
     NO_NAS: "连不上 NAS 的写入口（NAS 离线 / 隧道刚换域名还没同步）",
     TOO_FAST: "一分钟内提交太多次了，歇一会儿再点",
     NO_NAS_NO_TOKEN: "NAS 不在线，又没配 GitHub Token。等 NAS 恢复，或展开下面填个 token 直连",
@@ -585,18 +580,26 @@
   async function nasPush(json) {
     const base = await nasBase();
     if (!base) throw new Error("NO_NAS");
-    const key = getKey();
-    if (!key) throw new Error("NO_KEY");
+
+    // 需要口令时现问一次；401 只重试一次，避免弱口令被反复试
+    let key = getKey() || (await askKey(gateRetry ? "口令不对，再输一次。" : ""));
+    if (!key) throw new Error("CANCELLED");
 
     let r;
-    try {
-      r = await ghFetch(`${base}/api/save`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Key": key },
-        body: json,
-      }, 120000);
-    } catch (e) {
-      throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NO_NAS");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        r = await ghFetch(`${base}/api/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Admin-Key": key },
+          body: json,
+        }, 120000);
+      } catch (e) {
+        throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NO_NAS");
+      }
+      if (r.status !== 401) break;
+      if (attempt === 1) throw new Error("BAD_KEY");
+      key = await askKey("口令不对，再输一次。");
+      if (!key) throw new Error("CANCELLED");
     }
 
     let j = {};
@@ -706,6 +709,8 @@
     btn.disabled = true;
     const old = btn.textContent;
     btn.textContent = "提交中…";
+    // 走 NAS 时，pushContent 会在这里面弹口令框；取消则抛 CANCELLED
+    gateRetry = false;
     try {
       const r = await pushContent(json);
       dirty = false;
@@ -714,8 +719,12 @@
       const via = r && r.via === "direct" ? "（直连）" : "";
       toast(`${r && r.note ? r.note + "，" : ""}已提交${via}${c ? " " + c : ""}，Pages 约 20~60 秒构建`);
     } catch (e) {
-      const msg = GH_ERR[e.message] || e.message || "提交失败";
-      toast(msg, true);
+      if (e.message === "CANCELLED") {
+        toast("已取消，没有提交任何东西");
+      } else {
+        const msg = GH_ERR[e.message] || e.message || "提交失败";
+        toast(msg, true);
+      }
       if (e.message === "NO_NAS_NO_TOKEN" || e.message === "NO_NAS") {
         const box = $("#token-box");
         if (box) box.open = true;

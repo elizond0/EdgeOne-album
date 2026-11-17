@@ -20,19 +20,22 @@
   </header>
 
   <main class="admin">
-    <!-- 登录 -->
-    <section id="login-view" class="login">
+    <!-- 发布口令（点「保存并发布」时才弹出；编辑界面不再设卡） -->
+    <section id="publish-gate" class="login" hidden>
       <div class="modal__card">
-        <h2 class="modal__title">管理登录</h2>
-        <p class="modal__hint">口令在本机先校验一次哈希；点「保存并发布」时会再发给 NAS 的写入口验一次（只发口令，不发哈希）。</p>
-        <input class="modal__input" id="key-input" type="password" placeholder="管理口令（≥6 位）" autocomplete="off" />
-        <p class="modal__error" id="key-error" hidden></p>
-        <button class="btn" id="key-ok" type="button">进入后台</button>
+        <h2 class="modal__title">发布确认</h2>
+        <p class="modal__hint">编辑不需要口令。真正写回仓库时才验一次身份——口令发给家里 NAS 的写入口核对，本机不存哈希。</p>
+        <input class="modal__input" id="gate-input" type="password" placeholder="发布口令（≥6 位）" autocomplete="off" />
+        <p class="modal__error" id="gate-error" hidden></p>
+        <div class="gate-actions">
+          <button class="btn" id="gate-ok" type="button">确认发布</button>
+          <button class="btn btn--ghost" id="gate-cancel" type="button">取消</button>
+        </div>
       </div>
     </section>
 
     <!-- 后台主体 -->
-    <section id="panel-view" hidden>
+    <section id="panel-view">
       <div class="admin-bar">
         <nav class="tabs" id="tabs">
           <button class="tab is-active" data-tab="basic" type="button">基本信息</button>
@@ -55,7 +58,7 @@
         由它替你先验一遍再提交：照片文件名是否真在 NAS 上、照片数有没有骤降、旧版留档。
         校验过了才推送仓库，GitHub Pages 约 20~60 秒重建，<kbd>Ctrl/Cmd+Shift+R</kbd> 强刷可见。
         <br />
-        口令就是登录后台的那个（NAS 侧只存哈希，token 不进浏览器）。
+        口令在点「保存并发布」时输入，只用于让 NAS 写入口核对身份（NAS 侧只存加盐哈希，token 不进浏览器）。
         NAS 不在线时，可以在下面填一个 GitHub Token 走直连；两条都不通还有「仅下载」。
         照片文件本身不需要在这里传——放进 NAS 的照片目录即可。
       </p>
@@ -123,11 +126,9 @@
 
         <div class="panel__card">
           <p class="modal__hint">
-            修改管理口令。它只存在这台电脑的浏览器里（localStorage），不会上传到任何地方；
-            换设备登录仍然用默认口令，除非在那边也改一次。
+            发布口令只在点「保存并发布」时输入、只发给 NAS 核对，<strong>这里不能改</strong>，浏览器里也不留任何副本。
+            要换口令得在 NAS 上执行 <code>python3 album-push.py --set-key '新口令'</code>。
           </p>
-          <label class="field">新口令（≥6 位）<input id="new-key" type="password" autocomplete="new-password" /></label>
-          <button class="btn" id="save-key" type="button">修改口令</button>
           <p class="modal__hint" id="key-tip" style="margin-top:6px"></p>
         </div>
       </div>

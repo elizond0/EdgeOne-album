@@ -5,6 +5,17 @@
 
 .login { display: flex; justify-content: center; padding-top: var(--space-7); }
 .login .modal__card { display: grid; gap: var(--space-3); max-width: 380px; width: 100%; position: static; }
+/* 发布口令弹窗：编辑界面已经可见，弹窗要压在上面 */
+#publish-gate {
+  position: fixed; inset: 0; z-index: 50; align-items: center; padding-top: 0;
+  background: rgba(20, 22, 34, .55); backdrop-filter: blur(2px);
+}
+#publish-gate .modal__card {
+  background: var(--color-surface); border-radius: var(--radius-lg); padding: var(--space-5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .28);
+}
+.gate-actions { display: flex; gap: var(--space-3); }
+.gate-actions .btn { flex: 1; }
 
 /* 标签页 */
 .tabs { display: flex; gap: var(--space-2); overflow-x: auto; margin-bottom: var(--space-4); scrollbar-width: none; }
