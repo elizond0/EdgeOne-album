@@ -217,6 +217,22 @@
     render();
   }
 
+  // 深链 #p2 的页码只读一次，记住要跳到第几页。
+  // 为什么不在 site:ready 里读 location.hash 就完事：实测线上带 #p2 进来，
+  // site:ready 触发时 hash 确实是 "#p2"、正则也匹配，但最终仍停在第 1 页——
+  // 因为站点在 site:ready 之后还有一次版面落定（reveal 渐入、图片回填撑高），
+  // 触发 resize 链把页面重渲染了一遍。重渲染走的是 render()，page 变量被前一轮
+  // 的 startList 归过 1，深链就丢了。改成「记住目标页，等版面静下来再补一次」。
+  let wantPage = 0;
+
+  function syncDeepLink() {
+    if (!wantPage) return;
+    if (wantPage > totalPages()) return;
+    if (page === wantPage) return;
+    page = wantPage;
+    render();
+  }
+
   document.addEventListener("site:ready", function () {
     all = Site.visiblePhotos();
     cfg = Site.pageCfg();
@@ -224,12 +240,22 @@
 
     // 深链 #p3 直接翻到那一页
     const m = /^#p(\d+)$/.exec(location.hash || "");
-    if (m) page = Math.max(1, parseInt(m[1], 10) || 1);
+    if (m) wantPage = Math.max(1, parseInt(m[1], 10) || 1);
+    if (wantPage) page = wantPage;
 
     startList();
 
+    // 首屏排版落定后（图片回填会改变列高）再校一次，兜住重渲染把页码打回 1 的情况
+    requestAnimationFrame(function () {
+      requestAnimationFrame(syncDeepLink);
+    });
+    setTimeout(syncDeepLink, 1200);
+
     const sel = document.getElementById("place-filter");
-    if (sel) sel.addEventListener("change", startList);
+    if (sel) sel.addEventListener("change", function () {
+      wantPage = 0;          // 用户手选了地点，深链作废，别再把它拉回去
+      startList();
+    });
 
     // 列数变了（转屏 / 拖窗口）要重算行优先顺序，否则序号会错位
     let lastCols = effectiveCols();
