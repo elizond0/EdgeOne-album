@@ -156,7 +156,7 @@ window.NAS.load() 成功 → 用 NAS 的 578 项覆盖 window.PHOTOS / window.VI
               回退到 config.js 的 PHOTOS + IndexedDB 本机上传
 ```
 
-所以往 `assets/photos/` 里加图、在 `config.js` 的 `PHOTOS` 里登记，**页面上不会出现**。要加照片，正确做法是把原图放进 NAS 的 `共享文件夹/拓展工具/照片展示/csy/`（容器内 `/srv/csy`，2026-11-16 前的路径是 `共享文件夹/Photos/`），然后跑一遍 `pub_img.py` + `mkindex.py`。
+所以往 `assets/photos/` 里加图、在 `config.js` 的 `PHOTOS` 里登记，**页面上不会出现**。要加照片，正确做法是把原图放进 NAS 的 `共享文件夹/Photos/csy/`（容器内 `/srv/csy`），然后跑一遍 `pub_img.py` + `mkindex.py`。
 
 如果你想改回「静态图优先」，把 `renderAll()` 里那 8 行 `if (window.NAS && window.NAS.load)` 删掉就行，NAS 直链会退化成不生效（但 `nas.js` 留着不报错）。
 
@@ -177,7 +177,7 @@ window.NAS.load() 成功 → 用 NAS 的 578 项覆盖 window.PHOTOS / window.VI
 ## 6. 不要做的事
 
 - **不要把照片/视频提交进仓库**。GitHub 仓库是 public（Pages 免费版不支持私有仓库），媒体全在 NAS，仓库里只有 12 张占位图。
-- **不要改源目录（`csy/`，容器内 `/srv/csy`，只读挂载）里的任何文件**。UGOS 相册应用靠 EXIF 拍摄日期建索引，动了元信息索引就散。压缩版只出现在 `album-pub/`。
+- **不要改源目录（`csy/`，容器内 `/srv/csy`，只读挂载）里的任何文件**。UGOS 相册应用靠 EXIF 拍摄日期建索引，动了元信息索引就散。压缩版只出现在 `拓展工具/照片展示/`。
 - **不要把 GitHub token 写进任何文件**。`deploy-scripts/pub_gh.sh` 是从 NAS 的 `/var/lib/tailscale/.gh_token` 读的，仓库里没有明文。
 
 ---

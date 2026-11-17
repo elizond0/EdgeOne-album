@@ -1,6 +1,6 @@
 #!/bin/sh
 # 批量转码：HLG HDR → H.264 SDR，保留 creation_time，跳过已存在
-# 源目录与 nas-setup.sh 保持同一口径：共享文件夹 csy 子目录 → /srv/csy（只读）
+# 源目录与 nas-setup.sh 保持同一口径：共享文件夹/Photos/csy → /srv/csy（只读）
 SRC=${SRC_PHOTOS:-/srv/csy}
 OUT=/srv/pub/video
 mkdir -p "$OUT"

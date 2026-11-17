@@ -9,8 +9,8 @@
       "cap_add": ["NET_ADMIN", "NET_RAW"],
       "devices": ["/dev/net/tun:/dev/net/tun"],
       "volumes": [
-        "../csy:/srv/csy:ro",
-        "./album-pub:/srv/pub",
+        "../Photos/csy:/srv/csy:ro",
+        "./照片展示:/srv/pub",
         "./ts-state:/var/lib/tailscale"
       ],
       "ports": ["8443:8443"],

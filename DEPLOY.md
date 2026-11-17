@@ -15,9 +15,9 @@
        └─ scripts/site.js        ← 渲染与交互，运行时把相对路径拼成完整 URL
 
 家里 NAS（album-node 容器）
-  ├─ /srv/csy    ← 原图原片（共享文件夹 csy 子目录，**只读**；实测 561 图 + 16 视频 + 1 PNG）
-  │                 压缩图与视频的唯一源头。2026-11-16 起 /srv/photos 已废弃
-  ├─ /srv/pub    ← 发布产物：img/ 压缩图、img/t/ 缩略图、video/、video/poster/、index.json、base.json
+  ├─ /srv/csy    ← 原图原片（共享文件夹/Photos/csy，**只读**；实测 562 图 + 16 视频）
+  │                 压缩图与视频的唯一源头。2026-11-17 起 /srv/photos 已彻底移除
+  ├─ /srv/pub    ← 发布产物（共享文件夹/拓展工具/照片展示）：img/ 压缩图、img/t/ 缩略图、video/、video/poster/、index.json、base.json
   └─ Caddy :8443 + cloudflared → https://xxxx.trycloudflare.com
         └─ base-sync.sh 常驻：盯住地址，变了就推回 GitHub
 ```
@@ -45,11 +45,10 @@
 
 ## 三、日常更新：加照片 / 加视频（最常用）
 
-照片和视频**都不在网页后台上传**，直接丢进 NAS 的 `共享文件夹/csy/`（容器内是 `/srv/csy`，**只读挂载**）。
-实测这个目录既有图也有视频，且**全在同一层没有子目录**：578 项 = 561 JPG + 16 MOV + 1 PNG。
+照片和视频**都不在网页后台上传**，直接丢进 NAS 的 `共享文件夹/Photos/csy/`（容器内是 `/srv/csy`，**只读挂载**）。
+实测这个目录既有图也有视频，且**全在同一层没有子目录**：578 项 = 562 JPG/PNG + 16 MOV。
 
-> 两个新旧口径要分清：旧文档写「Photos 放原片、csy 是副本」，但现在 **csy 就在 photos 里面**，
-> 两者是同一份物理数据。链路只挂 `/srv/csy:ro`，`/srv/photos` 的挂载与 `mkdir` 都已删除。
+> `共享文件夹/照片视频/` 是 2026-11-17 之前的旧位置，已废弃；原图现在只有 `Photos/csy` 一个入口。
 > 只读是故意的：任何脚本都不该碰原图，改名那一步会自动跳过。
 
 放好之后，在容器终端里跑**一条命令**：

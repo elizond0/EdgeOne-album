@@ -8,9 +8,9 @@
 #         · 隧道地址变了没人追平 base.json（base-sync 进程根本不在）
 #       这个脚本把这几件事一次补齐，并把 base-sync 挂成常驻。
 #
-# 数据来源（2026-11-16 实测）：共享文件夹 csy 子目录 → 容器 /srv/csy（只读），
-#       578 项 = 561 JPG + 16 MOV + 1 PNG，全在**同一层**，没有子目录。
-#       压缩图与视频的唯一源就是这个目录；/srv/photos 已废弃（目录在但只剩一个空壳）。
+# 数据来源（2026-11-17 实测）：共享文件夹/Photos/csy → 容器 /srv/csy（只读），
+#       578 项 = 562 JPG/PNG + 16 MOV，全在**同一层**，没有子目录。
+#       压缩图与视频的唯一源就是这个目录；/srv/photos 已从 compose 移除。
 #
 # 用法（在容器网页终端里）：
 #   wget -q -O /tmp/nas-setup.sh "https://raw.githubusercontent.com/elizond0/album/main/deploy-scripts/nas-setup.sh?x=$(date +%s)" \

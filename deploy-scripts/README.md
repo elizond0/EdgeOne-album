@@ -3,11 +3,11 @@
 一个 Alpine 容器干三件事：**把 NAS 上的媒体变成公网直链、把当前地址自动告诉前端、开机和掉线都能自己恢复**。
 
 ```
-NAS 文件 ──── 共享文件夹/csy/ → /srv/csy（只读；578 项 = 561 JPG + 16 MOV + 1 PNG，全在一层）
+NAS 文件 ──── 共享文件夹/Photos/csy/ → /srv/csy（只读；578 项 = 562 JPG/PNG + 16 MOV，全在一层）
                             │
                      pub_img.py（2048/q85/去 EXIF）
                             ↓
-                     album-pub/img、/video
+                     拓展工具/照片展示/img、/video
                             │
                      mkthumb.py → img/t/            （网格用缩略图，体积降到 12%）
                             │
@@ -38,13 +38,16 @@ NAS 文件 ──── 共享文件夹/csy/ → /srv/csy（只读；578 项 = 5
 
 | 宿主机 | 容器内 | 权限 |
 |---|---|---|
-| `共享文件夹/csy` | `/srv/csy` | **只读** ← 压缩图与视频的唯一源 |
-| `共享文件夹/album-pub` | `/srv/pub` | 可写（唯一对外发布目录） |
-| `共享文件夹/ts-state` | `/var/lib/tailscale` | 可写，存 cloudflared、Caddyfile、各脚本、`orig_video` 原片备份 |
+| `共享文件夹/Photos/csy` | `/srv/csy` | **只读** ← 压缩图与视频的唯一源 |
+| `共享文件夹/拓展工具/照片展示` | `/srv/pub` | 可写（唯一对外发布目录） |
+| `共享文件夹/拓展工具/ts-state` | `/var/lib/tailscale` | 可写，存 cloudflared、Caddyfile、各脚本、`orig_video` 原片备份 |
 
-> 2026-11-16 起 `/srv/photos` 与 `/srv/csy` 指向**同一份物理数据**（csy 已在 photos 里面）。
-> 链路只认 `/srv/csy`，`/srv/photos` 挂载已从 compose 删除（`boot.sh` 也不再 `mkdir`）。
-> 别再把两者当「原片 / 副本」两套写 —— 那样文档里会有两个源头，排查时先要分辨哪个是真的。
+> compose 在 `共享文件夹/拓展工具/docker-compose.yaml`，项目「存放路径」必须选 `共享文件夹/拓展工具`；
+> 选成默认的 `共享文件夹/docker/album-node` 会让三个相对挂载全指向空目录。
+
+> 2026-11-17 定稿：原图唯一入口 `共享文件夹/Photos/csy` → `/srv/csy`（只读）；
+> 发布目录 `共享文件夹/拓展工具/照片展示` → `/srv/pub`（读写，`img/`、`video/`、`index.json` 都在它下面）。
+> `/srv/photos` 已彻底移除。别再写「原片 / 副本」两套 —— 那会让排查先花时间分辨哪个才是真的。
 
 > `ALBUM_HOME` 环境变量可以改脚本家目录，默认 `/var/lib/tailscale`（历史遗留命名，别被名字误导）。
 
@@ -61,7 +64,7 @@ printf '%s' 'ghp_xxx' > /var/lib/tailscale/.gh_token && chmod 600 /var/lib/tails
 
 ## 日常发布新照片 / 新视频
 
-照片和视频都放进 `共享文件夹/csy/`（容器内 `/srv/csy`，只读挂载）。
+照片和视频都放进 `共享文件夹/Photos/csy/`（容器内 `/srv/csy`，只读挂载）。
 
 > 只读挂载下**第 2 步「统一小写」会自动跳过**（`os.rename` 在 ro 上会 EROFS）。
 > 这不影响站点：`pub_img.py` 输出时强制 `stem.lower()+".jpg"`，源名大写也不会 404。
