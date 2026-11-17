@@ -1,17 +1,31 @@
-/* page-photos.js —— 照片墙子页：渲染 + 地点筛选
+/* page-photos.js —— 照片墙子页：渲染 + 地点筛选 + 分页
    本对话的决定：前台不再提供上传按钮，所有内容调整都在管理后台。
    因此这里只做展示与筛选。
 
-   562 张全量渲染会让 DOM 涨到两千多个节点、页面高 8 万像素，
-   所以分批铺：一次 photosPerBatch 张，滚到底再补下一批。
-   列数由后台 meta.pages.photosCols 控制（1~4），手机上 3 列太挤就调 2。 */
+   ============================================================
+   为什么从「无限滚动」改成「分页」（2026-11-17）
+   ============================================================
+   以前是一次铺 48 张、滚到底自动补。问题有两个，都是实测出来的：
+     1. 瀑布流用 CSS columns，卡片按「列优先」排。无限追加时新一批照片
+        会插进各列末尾，顺序看起来是乱的；想找某一张只能一直滚。
+     2. 用户明确要「一页 20 行、能翻页」。
+   现在改成：每页 rows × cols 张（默认 20 行 × 3 列 = 60 张），
+   底部页码栏翻页，翻页时滚回照片墙顶部而不是页面顶部。
+
+   ============================================================
+   还有一个坑：CSS columns 是按列填的
+   ============================================================
+   .wall{columns:3} 会把第 1、2、3 张竖着排在左列，第 4 张才进中列。
+   人眼读图是从左到右，这样读序号全是跳的。所以这里先把「视觉顺序」
+   算成 indexMap：rows 行 × cols 列，一页正好整除，按行优先取下标。
+   手机 1 列、平板 2 列时也按当前实际列数重算，序号始终对得上。 */
 (function () {
   "use strict";
 
-  let all = [];
-  let shown = 0;
-  let list = [];
-  let cfg = { photosCols: 3, photosPerBatch: 48 };
+  let all = [];      // 全部可见照片（按日期从新到旧）
+  let list = [];     // 当前筛选后的照片
+  let cfg = { photosCols: 3, photosRows: 20, photosPerPage: 60 };
+  let page = 1;
 
   function placeKey(p) {
     const pl = p.place || {};
@@ -37,77 +51,197 @@
       keys.map((k) => `<option value="${Site.esc(k)}">${Site.esc(k)}（${map.get(k)}）</option>`).join("");
   }
 
-  function syncMore() {
-    const more = document.getElementById("wall-more");
-    if (!more) return;
-    const left = list.length - shown;
-    more.hidden = left <= 0;
-    const btn = more.querySelector("[data-wall-more]");
-    if (btn) btn.textContent = "还有 " + left + " 张，继续加载 ↓";
+  /* ---------- 列数：以后台设置为上限，窄屏再降 ----------
+     必须读实际生效的列数，不能直接用后台值：后台写 3，手机上是 1 列，
+     按 3 列算出来的行优先顺序在 1 列布局下就是错的。 */
+  function effectiveCols() {
+    const w = window.innerWidth;
+    let c = cfg.photosCols;
+    if (w <= 560) c = 1;
+    else if (w <= 960) c = Math.min(c, 2);
+    else if (w <= 1100) c = Math.min(c, 3);
+    return Math.max(1, Math.min(4, c));
   }
 
-  function grow() {
-    const wall = document.getElementById("wall");
-    if (!wall || shown >= list.length) return false;
-    const end = Math.min(list.length, shown + cfg.photosPerBatch);
-    const frag = document.createDocumentFragment();
-    for (let i = shown; i < end; i++) frag.appendChild(Site.photoCard(list[i], i, list));
-    wall.appendChild(frag);
-    shown = end;
-    syncMore();
-    return shown < list.length;
+  function perPage() {
+    return Math.max(1, cfg.photosPerPage);
+  }
+
+  function totalPages() {
+    return Math.max(1, Math.ceil(list.length / perPage()));
+  }
+
+  /* ---------- 一页内的「视觉顺序」 ----------
+     columns 是列优先填充，所以想让第 n 张显示在第 r 行第 c 列，
+     就要把索引排成 [c0r0, c1r0, ..., c0r1, c1r1, ...] 的转置形式。 */
+  function indexMap(startIdx, count, cols) {
+    const rows = Math.ceil(count / cols);
+    const order = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        // 列优先落位：第 c 列的第 r 个
+        const i = c * rows + r;
+        if (i < count) order.push(startIdx + i);
+      }
+    }
+    return order;
   }
 
   function render() {
+    const wall = document.getElementById("wall");
+    if (!wall) return;
+    const cols = effectiveCols();
+    const size = perPage();
+    const pages = totalPages();
+    page = Math.min(Math.max(1, page), pages);
+
+    const start = (page - 1) * size;
+    const count = Math.min(size, list.length - start);
+
+    wall.dataset.cols = String(cfg.photosCols);
+    wall.innerHTML = "";
+
+    const frag = document.createDocumentFragment();
+    indexMap(start, count, cols).forEach((idx, vi) => {
+      frag.appendChild(Site.photoCard(list[idx], idx, list));
+    });
+    wall.appendChild(frag);
+
+    renderPager(pages, start, count);
+    renderCount(start, count);
+  }
+
+  function renderCount(start, count) {
+    const el = document.getElementById("wall-count");
+    if (!el) return;
+    const sel = document.getElementById("place-filter");
+    const want = sel ? sel.value : "";
+    const scope = want ? `${want} · ` : "";
+    if (!list.length) {
+      el.textContent = want ? `${want} · 这里还没有照片。` : "这里还没有照片。";
+      return;
+    }
+    el.textContent = `${scope}第 ${page} / ${totalPages()} 页 · 本页 ${count} 张（第 ${start + 1}–${start + count} 张，共 ${list.length} 张）`;
+  }
+
+  /* ---------- 页码栏 ----------
+     562 张、每页 60 张 = 10 页。页码全铺太长（手机上尤其），
+     所以用「首页 … 当前±2 … 末页」的省略式，加前后翻。 */
+  function pageWindow(cur, total) {
+    const set = new Set([1, total, cur, cur - 1, cur + 1, cur - 2, cur + 2]);
+    const arr = [...set].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b);
+    const out = [];
+    arr.forEach((n, i) => {
+      if (i && n - arr[i - 1] > 1) out.push("…");
+      out.push(n);
+    });
+    return out;
+  }
+
+  function renderPager(pages, start, count) {
+    const box = document.getElementById("wall-pager");
+    if (!box) return;
+    if (pages <= 1) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+
+    const btn = (label, p, opt) => {
+      opt = opt || {};
+      const dis = opt.disabled ? " disabled" : "";
+      const cur = opt.current ? ' aria-current="page"' : "";
+      const cls = "pager__btn" + (opt.current ? " is-current" : "");
+      return `<button type="button" class="${cls}" data-page="${p}"${dis}${cur}>${label}</button>`;
+    };
+
+    let html = "";
+    html += btn("‹ 上一页", page - 1, { disabled: page === 1 });
+    pageWindow(page, pages).forEach((n) => {
+      html += n === "…" ? '<span class="pager__gap">…</span>' : btn(String(n), n, { current: n === page });
+    });
+    html += btn("下一页 ›", page + 1, { disabled: page === pages });
+    box.innerHTML = html;
+
+    // 第二排：跳到第几页 + 本页区间
+    const jump = document.createElement("div");
+    jump.className = "pager__meta";
+    jump.innerHTML =
+      `<span>共 ${list.length} 张 · 每页 ${perPage()} 张</span>` +
+      `<label>跳到第 <input type="number" min="1" max="${pages}" value="${page}" id="pager-jump" /> 页</label>`;
+    box.appendChild(jump);
+
+    box.querySelectorAll("[data-page]").forEach((b) => {
+      b.addEventListener("click", () => go(Number(b.dataset.page)));
+    });
+    const inp = box.querySelector("#pager-jump");
+    if (inp) {
+      inp.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        const n = Math.min(pages, Math.max(1, parseInt(inp.value, 10) || 1));
+        go(n);
+      });
+    }
+  }
+
+  function go(n) {
+    page = n;
+    render();
+    // 滚到照片墙顶部，而不是页面顶部——顶上的站点导航和标题没必要重看一遍
+    const head = document.querySelector(".wall-toolbar") || document.getElementById("wall");
+    if (head) {
+      const y = head.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+    }
+    // 地址栏留个 #p3，刷新或分享都还在这一页；用 replaceState 不污染后退历史
+    try {
+      history.replaceState(null, "", page > 1 ? "#p" + page : location.pathname + location.search);
+    } catch (e) { /* file:// 下会抛错，忽略 */ }
+  }
+
+  function startList() {
     const sel = document.getElementById("place-filter");
     const want = sel ? sel.value : "";
     list = want ? all.filter((p) => placeKey(p) === want) : all;
-
-    const wall = document.getElementById("wall");
-    wall.innerHTML = "";
-    // 用 data-cols 而不是 inline style，这样窄屏的媒体查询还能盖住
-    wall.dataset.cols = String(cfg.photosCols);
-    shown = 0;
-
-    const count = document.getElementById("wall-count");
-    if (count) {
-      count.textContent = want
-        ? `${want} · ${list.length} 张（共 ${all.length} 张）`
-        : `共 ${all.length} 张，按拍摄日期从新到旧`;
-    }
-
-    if (!list.length) {
-      wall.innerHTML = '<p class="section__desc">这里还没有照片。</p>';
-      syncMore();
-      return;
-    }
-    grow();
+    // 筛选一变，页码必须归 1，否则可能落在越界页上显示空白
+    page = 1;
+    render();
   }
 
   document.addEventListener("site:ready", function () {
     all = Site.visiblePhotos();
     cfg = Site.pageCfg();
     placeOptions();
-    render();
+
+    // 深链 #p3 直接翻到那一页
+    const m = /^#p(\d+)$/.exec(location.hash || "");
+    if (m) page = Math.max(1, parseInt(m[1], 10) || 1);
+
+    startList();
 
     const sel = document.getElementById("place-filter");
-    if (sel) sel.addEventListener("change", render);
+    if (sel) sel.addEventListener("change", startList);
 
-    const more = document.getElementById("wall-more");
-    const btn = more && more.querySelector("[data-wall-more]");
-    if (btn) btn.addEventListener("click", grow);
+    // 列数变了（转屏 / 拖窗口）要重算行优先顺序，否则序号会错位
+    let lastCols = effectiveCols();
+    let t = 0;
+    window.addEventListener("resize", function () {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        const c = effectiveCols();
+        if (c === lastCols) return;
+        lastCols = c;
+        render();
+      }, 200);
+    });
 
-    // 滚到底自动补下一批；观察器只在状态变化时回调，补完要自己再看一次
-    if (more && "IntersectionObserver" in window) {
-      const io = new IntersectionObserver(
-        (ens) =>
-          ens.forEach((en) => {
-            if (!en.isIntersecting) return;
-            if (grow()) requestAnimationFrame(() => io.observe(more));
-          }),
-        { rootMargin: "400px 0px" }
-      );
-      io.observe(more);
-    }
+    // 键盘翻页：← → （不抢输入框的键）
+    document.addEventListener("keydown", function (e) {
+      const tag = (e.target && e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "select" || tag === "textarea") return;
+      if (e.key === "ArrowLeft" && page > 1) go(page - 1);
+      if (e.key === "ArrowRight" && page < totalPages()) go(page + 1);
+    });
   });
 })();

@@ -20,11 +20,28 @@
   </header>
 
   <main class="admin">
-    <!-- 发布口令（点「保存并发布」时才弹出；编辑界面不再设卡） -->
+    <!-- 进门口令：进后台先输一次，由 NAS 的 /api/auth 核验。
+         为什么不放在浏览器里：口令只有 6 位数字，任何写在 JS 里的哈希/明文
+         都是公开的，等于没有。所以「对不对」这件事只有 NAS 知道，页面只拿到
+         一个有效期很短的一次性令牌（放 sessionStorage，关标签页即失效）。 -->
+    <section id="unlock-view" class="login" hidden>
+      <div class="modal__card">
+        <h2 class="modal__title">管理后台</h2>
+        <p class="modal__hint">输入管理口令进入。口令与 NAS 上保存的哈希比对，浏览器里不存任何副本。</p>
+        <input class="modal__input" id="unlock-input" type="password" inputmode="numeric" placeholder="管理口令" autocomplete="current-password" />
+        <p class="modal__error" id="unlock-error" hidden></p>
+        <div class="gate-actions">
+          <button class="btn" id="unlock-ok" type="button">进入</button>
+        </div>
+        <p class="modal__hint modal__hint--mini" id="unlock-note">正在连接 NAS…</p>
+      </div>
+    </section>
+
+    <!-- 发布口令（进入后台后点「保存并发布」时才弹出） -->
     <section id="publish-gate" class="login" hidden>
       <div class="modal__card">
         <h2 class="modal__title">发布确认</h2>
-        <p class="modal__hint">编辑不需要口令。真正写回仓库时才验一次身份——口令发给家里 NAS 的写入口核对，本机不存哈希。</p>
+        <p class="modal__hint">写回仓库前再验一次身份——口令发给家里 NAS 的写入口核对，本机不存哈希。</p>
         <input class="modal__input" id="gate-input" type="password" placeholder="发布口令（≥6 位）" autocomplete="off" />
         <p class="modal__error" id="gate-error" hidden></p>
         <div class="gate-actions">
@@ -35,7 +52,7 @@
     </section>
 
     <!-- 后台主体 -->
-    <section id="panel-view">
+    <section id="panel-view" hidden>
       <div class="admin-bar">
         <nav class="tabs" id="tabs">
           <button class="tab is-active" data-tab="basic" type="button">基本信息</button>
@@ -53,36 +70,24 @@
         </div>
       </div>
 
-      <p class="modal__hint admin-note">
-        「保存并发布」把 <code>content.json</code> 交给家里 NAS 上的写入口（<code>album-push.py</code>），
-        由它替你先验一遍再提交：照片文件名是否真在 NAS 上、照片数有没有骤降、旧版留档。
-        校验过了才推送仓库，GitHub Pages 约 20~60 秒重建，<kbd>Ctrl/Cmd+Shift+R</kbd> 强刷可见。
-        <br />
-        口令在点「保存并发布」时输入，只用于让 NAS 写入口核对身份（NAS 侧只存加盐哈希，token 不进浏览器）。
-        NAS 不在线时，可以在下面填一个 GitHub Token 走直连；两条都不通还有「仅下载」。
-        照片文件本身不需要在这里传——放进 NAS 的照片目录即可。
-      </p>
-
+      <!-- 两条通道的说明收成一行可展开，别占掉首屏三分之一 -->
       <details class="admin-note admin-token" id="token-box">
         <summary>
-          <span>GitHub Token（备用 · NAS 不在线时直连）</span>
+          <span>发布说明 · 备用通道（GitHub Token 直连 / 仅下载）</span>
           <span class="token-state" id="token-state">未设置</span>
         </summary>
-        <div class="admin-token__body">
-          <p class="modal__hint">
-            <b>平时不用填。</b>只有 NAS 断电/断网、写入口连不上时才需要它兜底。
-            建一个 <b>Fine-grained token</b>：Repository access 只选 <code>elizond0/album</code>，
-            Permissions 只勾 <b>Contents → Read and write</b>，有效期建议 90 天。
-            token 只存在当前标签页的 sessionStorage，关掉标签页即失效，不会写进 localStorage。
-          </p>
-          <label class="field">
-            <input id="token-input" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" />
-          </label>
-          <div class="admin-token__acts">
-            <button class="btn" id="token-save" type="button">保存到本次会话</button>
-            <button class="btn btn--ghost" id="token-clear" type="button">清除</button>
-          </div>
+        <p class="modal__hint">
+          「保存并发布」把 <code>content.json</code> 交给家里 NAS 的写入口（<code>album-push.py</code>）：
+          它先核对照片是否真在 NAS 上、照片数有没有骤降，过了才推仓库，GitHub Pages 约 20~60 秒重建。
+          NAS 连不上时，可以填一个 GitHub Token 走直连；两条都不通还有「仅下载」手动推。
+          照片文件本身不用在这里传——放进 NAS 的照片目录即可。
+        </p>
+        <div class="token-row">
+          <input class="modal__input" id="token-input" type="password" placeholder="github_pat_… 或 ghp_…" autocomplete="off" />
+          <button class="btn" id="token-save" type="button">保存到本次会话</button>
+          <button class="btn btn--ghost" id="token-clear" type="button">清除</button>
         </div>
+        <p class="modal__hint">只存 sessionStorage，关掉标签页即失效。</p>
       </details>
 
       <!-- 基本信息 -->
@@ -117,11 +122,11 @@
           <p class="modal__hint">子页面设置：照片墙、随手记、心愿单这三页的列数与条数。</p>
           <div class="home-cfg-grid">
             <label class="field">照片墙页列数<input id="f-p-cols" type="number" min="1" max="4" /></label>
-            <label class="field">照片墙每批张数<input id="f-p-batch" type="number" min="12" max="120" step="12" /></label>
+            <label class="field">照片墙每页行数<input id="f-p-rows" type="number" min="2" max="60" /></label>
             <label class="field">随手记页列数<input id="f-q-cols" type="number" min="1" max="3" /></label>
             <label class="field">心愿单每组条数<input id="f-w-limit" type="number" min="0" max="30" /></label>
           </div>
-          <p class="modal__hint" style="margin-top:8px">心愿单填 0 表示不限制，整列都显示。</p>
+          <p class="modal__hint" style="margin-top:8px">照片墙每页张数 = 列数 × 每页行数（默认 3 列 × 20 行 = 60 张）。心愿单填 0 表示不限制，整列都显示。</p>
         </div>
 
         <div class="panel__card">

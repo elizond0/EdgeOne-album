@@ -39,11 +39,102 @@
      浏览器里不留任何副本：不写 localStorage，也不写 sessionStorage。 */
   const KEY_STORE = "album-admin-key"; // 旧版遗留键名，仅用于清理
 
-  function getKey() { return ""; }     // 每次发布都重新问，不缓存
+  /* ---------- 进门口令 ----------
+     口令本身只有 6 位数字，熵很低：把它或它的哈希写进 JS 等于公开。
+     所以「对不对」这件事只有 NAS 知道——进后台时把口令 POST 到
+     /api/auth，服务端用 PBKDF2 存着的哈希比对，过了才回一个一次性令牌。
+     令牌放 sessionStorage：关标签页即失效，刷新还在，不写 localStorage。 */
+  const TOKEN_STORE = "album-admin-token";
+
+  function getAuthToken() {
+    try { return sessionStorage.getItem(TOKEN_STORE) || ""; } catch (e) { return ""; }
+  }
+  function setAuthToken(t) {
+    try { t ? sessionStorage.setItem(TOKEN_STORE, t) : sessionStorage.removeItem(TOKEN_STORE); } catch (e) {}
+  }
+
+  function unlockError(msg) {
+    const el = $("#unlock-error");
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = !msg;
+  }
+
+  async function tryUnlock(key) {
+    const base = await nasBase();
+    if (!base) throw new Error("NO_NAS");
+    let r;
+    try {
+      r = await ghFetch(`${base}/api/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      }, 15000);
+    } catch (e) {
+      throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NO_NAS");
+    }
+    if (r.status === 401) throw new Error("BAD_KEY");
+    if (r.status === 429) throw new Error("TOO_FAST");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) throw new Error(j.error || "HTTP " + r.status);
+    return j.token || "ok";
+  }
+
+  async function gateIn() {
+    const view = $("#unlock-view");
+    const inp = $("#unlock-input");
+    const note = $("#unlock-note");
+    view.hidden = false;
+    inp.focus();
+
+    // NAS 是否在线，先探一下，省得人输了口令才发现连不上
+    const base = await nasBase();
+    let alive = false;
+    if (base) alive = await nasAlive(base);
+    if (note) {
+      note.textContent = alive
+        ? "已连上家里的 NAS 写入口。"
+        : "连不上 NAS 写入口（NAS 离线或隧道刚换域名）。口令校验要靠它，稍后再试。";
+      note.classList.toggle("is-bad", !alive);
+    }
+
+    const submit = async () => {
+      const k = (inp.value || "").trim();
+      if (!k) return unlockError("请先输入口令。");
+      unlockError("");
+      const btn = $("#unlock-ok");
+      btn.disabled = true;
+      btn.textContent = "校验中…";
+      try {
+        const tok = await tryUnlock(k);
+        setAuthToken(tok);
+        view.hidden = true;
+        inp.value = "";
+        await enter();
+      } catch (e) {
+        const m = {
+          BAD_KEY: "口令不对，再试一次。",
+          NO_NAS: "连不上 NAS，没法校验口令。等 NAS 恢复再进。",
+          TIMEOUT: "NAS 没有响应，稍后再试。",
+          TOO_FAST: "试太多次了，歇一分钟再来。",
+        }[e.message] || ("校验失败：" + e.message);
+        unlockError(m);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "进入";
+      }
+    };
+
+    $("#unlock-ok").addEventListener("click", submit);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  }
+
+  // 发布口令不缓存；进门拿的令牌在 nasPush() 里单独处理
 
   async function enter() {
     $("#panel-view").hidden = false;
-    $("#logout-btn").hidden = true;
+    $("#logout-btn").hidden = false;
     const ok = await Site.load();
     if (!ok.ready) { toast("内容加载失败：" + Site.error, true); return; }
     db = JSON.parse(JSON.stringify(Site.db));
@@ -52,13 +143,22 @@
     renderPhotos();
   }
 
+  /* ---------- 退出 ---------- */
+  $("#logout-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    setAuthToken("");
+    location.reload();
+  });
+
   // 清理旧版本留下的本机哈希与明文口令
   try {
     localStorage.removeItem("album-admin-hash");
     sessionStorage.removeItem(KEY_STORE);
   } catch (e) { /* 隐私模式下忽略 */ }
 
-  enter();
+  // 启动：有令牌先进（令牌也可能已过期，发布时会再撞 401），没有就弹进门口令
+  if (getAuthToken()) enter();
+  else gateIn();
 
   /* ---------- 标签页 ---------- */
   $("#tabs").addEventListener("click", (e) => {
@@ -99,7 +199,7 @@
   function renderPageCfg() {
     const p = (db.meta && db.meta.pages) || {};
     if ($("#f-p-cols")) $("#f-p-cols").value = p.photosCols || 3;
-    if ($("#f-p-batch")) $("#f-p-batch").value = p.photosPerBatch || 48;
+    if ($("#f-p-rows")) $("#f-p-rows").value = p.photosRows || 20;
     if ($("#f-q-cols")) $("#f-q-cols").value = p.quotesCols || 2;
     if ($("#f-w-limit")) $("#f-w-limit").value = p.wishLimit == null ? 0 : p.wishLimit;
   }
@@ -438,7 +538,7 @@
       };
       db.meta.pages = {
         photosCols: pick("#f-p-cols", 3, 1, 4),
-        photosPerBatch: pick("#f-p-batch", 48, 12, 120),
+        photosRows: pick("#f-p-rows", 20, 2, 60),
         quotesCols: pick("#f-q-cols", 2, 1, 3),
         wishLimit: pick("#f-w-limit", 0, 0, 30),
       };
@@ -581,23 +681,26 @@
     const base = await nasBase();
     if (!base) throw new Error("NO_NAS");
 
-    // 需要口令时现问一次；401 只重试一次，避免弱口令被反复试
-    let key = getKey() || (await askKey(gateRetry ? "口令不对，再输一次。" : ""));
-    if (!key) throw new Error("CANCELLED");
+    // 进门时拿到的令牌先顶上（省得每次发布都重输口令）；令牌过期了 NAS 会回 401，
+    // 这时才现问口令，且只重试一次——口令只有 6 位，不能让它被反复试。
+    let tok = getAuthToken();
+    let key = tok ? "" : (await askKey(gateRetry ? "口令不对，再输一次。" : ""));
+    if (!tok && !key) throw new Error("CANCELLED");
 
     let r;
     for (let attempt = 0; attempt < 2; attempt++) {
+      const headers = { "Content-Type": "application/json" };
+      if (key) headers["X-Admin-Key"] = key;
+      else headers["X-Admin-Auth"] = tok;
       try {
-        r = await ghFetch(`${base}/api/save`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Admin-Key": key },
-          body: json,
-        }, 120000);
+        r = await ghFetch(`${base}/api/save`, { method: "POST", headers, body: json }, 120000);
       } catch (e) {
         throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NO_NAS");
       }
       if (r.status !== 401) break;
       if (attempt === 1) throw new Error("BAD_KEY");
+      // 令牌失效：清掉，改问口令
+      if (tok) { setAuthToken(""); tok = ""; }
       key = await askKey("口令不对，再输一次。");
       if (!key) throw new Error("CANCELLED");
     }
@@ -754,8 +857,7 @@
   });
 
   /* ---------- 启动 ---------- */
-  // 没有本机登录锁了：进页面直接加载内容进编辑区。
-  // 身份校验推迟到点「保存并发布」那一刻，由 NAS 写入口核口令。
+  // 入口在文件上半段的 gateIn()/enter() 二选一里已经决定了，这里只同步 token 折叠区。
+  // 别再在这里无条件 enter()——那会让进门口令卡片和编辑区同时显示。
   syncTokenState();
-  enter();
 })();

@@ -43,9 +43,8 @@
         </div>
       </header>
       <div class="wall" id="wall"></div>
-      <div class="wall-more" id="wall-more" hidden>
-        <button type="button" class="preview-more__btn" data-wall-more>继续加载 ↓</button>
-      </div>
+      <!-- 页码栏：一页 rows×cols 张，翻页由 page-photos.js 渲染 -->
+      <nav class="pager" id="wall-pager" aria-label="照片分页" hidden></nav>
       <p class="form__hint" id="wall-count"></p>
     </section>
   </main>

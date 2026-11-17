@@ -134,12 +134,14 @@
   content: "NAS 没开机，视频暂时看不了";
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  color: #8d8778; font-size: var(--fs-small); letter-spacing: 0.06em;
+  color: #cbc3b2; font-size: var(--fs-small); letter-spacing: 0.06em;
   background: repeating-linear-gradient(
-    -45deg, rgba(255,255,255,0.02) 0 8px, rgba(255,255,255,0.05) 8px 16px
+    -45deg, rgba(29,23,21,0.92) 0 8px, rgba(45,37,33,0.92) 8px 16px
   );
 }
 .video-card.is-offline video { visibility: hidden; }
+/* 画框深底，占位文字要用浅色，否则在暗底上看不清 */
+.video-card__poster-text { color: #cbc3b2; }
 .polaroid__caption {
   font-family: var(--font-display);
   color: var(--color-text);
@@ -273,6 +275,52 @@ main > .section.home-slide:first-of-type { border-top: 0; }
 @media (max-width: 960px) { .wall { columns: 2; } .wall[data-cols] { columns: 2; } }
 @media (max-width: 560px) { .wall { columns: 1; } .wall[data-cols] { columns: 1; } }
 .wall-more { text-align: center; padding: var(--space-4) 0 var(--space-6); }
+
+/* ---------- 照片墙页码 ----------
+   562 张铺在一页里要滚 8 万像素，翻页是更合手的读法。
+   样式跟全站同一套令牌：白纸按钮、赭石实心表示当前页。 */
+.pager {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-6) auto var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+  max-width: 100%;
+}
+.pager[hidden] { display: none; }
+.pager__btn {
+  font-family: var(--font-display); font-size: var(--fs-small);
+  min-width: 40px; min-height: 40px; padding: 0 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--color-text); background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  cursor: pointer; transition: all var(--dur-fast) ease-out;
+}
+.pager__btn:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent); }
+.pager__btn.is-current {
+  background: var(--color-accent); color: var(--color-surface);
+  border-color: var(--color-accent); font-weight: 600;
+}
+.pager__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pager__gap { color: var(--color-muted); padding: 0 4px; user-select: none; }
+.pager__meta {
+  flex: 1 0 100%;
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--space-4); flex-wrap: wrap;
+  font-size: var(--fs-tiny); color: var(--color-muted);
+  margin-top: var(--space-2);
+}
+.pager__meta label { display: inline-flex; align-items: center; gap: 6px; }
+.pager__meta input {
+  width: 64px; font: inherit; text-align: center;
+  color: var(--color-text); background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+@media (max-width: 560px) {
+  .pager { gap: 6px; }
+  .pager__btn { min-width: 36px; min-height: 36px; padding: 0 10px; font-size: var(--fs-tiny); }
+}
 .wall__item {
   break-inside: avoid;
   margin-bottom: var(--space-5);
@@ -305,33 +353,40 @@ main > .section.home-slide:first-of-type { border-top: 0; }
   box-shadow: var(--shadow-3);
 }
 
-/* ---------- 视频区（深色夜幕）---------- */
+/* ---------- 视频区（纸色，与其他板块同一套底）----------
+   2026-11-17：原来是 --color-night 深色夜幕。用户反馈「首页影像板块和影像页
+   背景是黑的，跟其他版块不一致」——确实，整站是暖灰纸面，只有这两处突然
+   压成近黑，看起来像另一个站点。改成纸色 + 极淡的赭石晕染，
+   只用「卡片白纸 + 赭石描边」把影像区区分开，不再靠底色反差。
+   视频画框本身保留深底：画面未加载时深色比白底不刺眼，也是普遍预期。 */
 .videos-band {
-  background: var(--color-night);
-  color: #e8e4dc;
+  background: var(--color-bg);
+  color: var(--color-text);
   position: relative;
   overflow: hidden;
 }
 .videos-band::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background:
-    radial-gradient(40rem 26rem at 8% 0%, rgba(122, 92, 58, 0.26), transparent 60%),
-    radial-gradient(36rem 26rem at 96% 100%, rgba(158, 152, 140, 0.14), transparent 58%);
+    radial-gradient(40rem 26rem at 8% 0%, rgba(190, 176, 150, 0.22), transparent 62%),
+    radial-gradient(36rem 26rem at 96% 100%, rgba(122, 92, 58, 0.08), transparent 58%);
 }
-.videos-band .section__title { color: #efede7; }
-.videos-band .section__desc { color: #b8b1a2; } /* 提亮：深底小字对比度 ≥4.5 */
-.videos-band .section__eyebrow::after { background: rgba(239, 230, 218, 0.16); }
-.video-card__note { color: #b8b1a2; }
+.videos-band .section__title { color: var(--color-text); }
+.videos-band .section__desc { color: var(--color-muted); }
+.videos-band .section__eyebrow::after { background: var(--color-border); }
+.video-card__note { color: var(--color-muted); }
 
 .videos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-5); position: relative; }
 .video-card {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(239, 230, 218, 0.14);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
   transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 .video-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-2); }
+/* 画框保持深底：视频没加载出来时，白底 + 黑边会显得像一块坏掉的占位 */
 .video-card__frame { position: relative; aspect-ratio: 16 / 9; background: #1d1715; }
 .video-card__frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* 竖拍视频（1080×1920 占多数）：卡片改竖版，别把画面裁成一条横缝 */
@@ -342,9 +397,26 @@ main > .section.home-slide:first-of-type { border-top: 0; }
 .videos { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
 .videos > .video-card--portrait { max-width: 260px; justify-self: center; width: 100%; }
 .video-card__body { padding: var(--space-4); display: flex; align-items: baseline; gap: var(--space-2); }
-.video-card__title { font-family: var(--font-display); font-size: var(--fs-h3); color: #efede7; }
-.video-card__meta { font-family: var(--font-mono); font-size: var(--fs-tiny); color: #8d8778; letter-spacing: 0.08em; }
+.video-card__title { font-family: var(--font-display); font-size: var(--fs-h3); color: var(--color-text); }
+.video-card__meta { font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--color-muted); letter-spacing: 0.08em; }
 .video-card__note { font-size: var(--fs-small); margin-top: var(--space-1); }
+/* 视频放不出来时给一条可读的说明，别只留一块黑 */
+.video-card.is-error .video-card__frame::after {
+  content: "这段视频加载失败，点下方「重试」或稍后再看";
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: var(--space-4);
+  color: #cbc3b2; font-size: var(--fs-small); line-height: 1.6;
+  background: rgba(29, 23, 21, 0.86);
+}
+.video-card__retry {
+  position: absolute; left: 50%; bottom: var(--space-4); transform: translateX(-50%);
+  font: inherit; font-size: var(--fs-tiny); letter-spacing: 0.06em;
+  color: #efe7d6; background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(239, 231, 214, 0.45); border-radius: 999px;
+  padding: 6px 16px; cursor: pointer; z-index: 2;
+}
+.video-card__retry:hover { background: rgba(255, 255, 255, 0.2); }
 
 .btn {
   font-family: var(--font-display);
@@ -370,8 +442,8 @@ main > .section.home-slide:first-of-type { border-top: 0; }
   padding: 8px 20px;
 }
 .btn--ghost:hover { background: var(--color-accent-soft); box-shadow: none; }
-.videos-band .btn--ghost { color: #cdb896; border-color: #cdb896; }
-.videos-band .btn--ghost:hover { background: rgba(205, 184, 150, 0.14); }
+.videos-band .btn--ghost { color: var(--color-accent); border-color: var(--color-accent); }
+.videos-band .btn--ghost:hover { background: var(--color-accent-soft); }
 
 /* 上传内容的删除角标 */
 .del-btn {
@@ -412,6 +484,18 @@ main > .section.home-slide:first-of-type { border-top: 0; }
   transition: transform var(--dur-base) var(--ease-out);
 }
 .lightbox.open .lightbox__img { transform: scale(1); }
+/* 原图还在路上时先用缩略图顶着：轻微去饱和 + 一个角落提示，
+   让人知道「现在看到的是预览版」，而不是以为原图就这清晰度。 */
+.lightbox.is-loading-hd .lightbox__img { filter: saturate(0.9) blur(0.4px); }
+.lightbox.is-loading-hd::after {
+  content: "高清原图加载中…";
+  position: absolute; top: 20px; left: 20px;
+  font-size: var(--fs-tiny); letter-spacing: 0.08em;
+  color: #d8d2c4; background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px; padding: 4px 12px;
+  pointer-events: none;
+}
 /* 左右切换：滑出 / 滑入（方向由 --slide-dir 控制：1=下一张，-1=上一张） */
 .lightbox__img, .lightbox__caption {
   transition: opacity 0.24s ease-out, transform 0.3s var(--ease-out);

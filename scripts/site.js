@@ -157,8 +157,9 @@
 
   /* ---------- 图片并发闸门 ----------
      NAS 走隧道出去，单张实测 90~450 KB/s 之间跳。一次进视口十几张时如果全放开，
-     带宽被摊薄，观感是「整片都在转圈、一张都不出来」。这里限制同时最多 4 张在途。 */
-  const IMG_LIMIT = 4;
+     带宽被摊薄，观感是「整片都在转圈、一张都不出来」。这里限制同时最多 6 张在途。
+     （2026-11-17 从 4 提到 6：一页 60 张，4 张并发排队太久；6 张实测更顺，再多互相拖慢。） */
+  const IMG_LIMIT = 6;
   let imgActive = 0;
   const imgQueue = [];
 
@@ -269,7 +270,12 @@
             }
             wallIO.unobserve(en.target);
           }),
-        { rootMargin: "400px 0px" }
+        // 2400px 而不是 400px：照片墙改成翻页后，一页 60 张、整页高六七千像素。
+        // 400px 意味着必须真的滚到那一张附近才开始下载，用户在页中间停下时，
+        // 屏外半屏全是空白纸片——看起来就是「有部分照片显示不出来」。
+        // 放大到 2400px 后，翻页当下就会把整页都排进队列；真正的并发仍然由
+        // loadImg 的 IMG_LIMIT 队列卡着，不会把带宽摊薄。
+        { rootMargin: "2400px 0px" }
       );
     }
     wallIO.observe(node);
@@ -459,13 +465,22 @@
     if (thumb && want && thumb !== want) {
       lbImg.setAttribute("data-want", want);
       lbImg.src = thumb;
+      // 灯箱是「看细节」的地方，用户不是在刷墙。原图没到之前先标一下放大状态，
+      // 到了再撤掉——不然点开只看到一张糊的缩略图，还以为原图就这清晰度。
+      lb.classList.add("is-loading-hd");
       const pre = new Image();
       pre.onload = function () {
-        if (lbImg.getAttribute("data-want") === want) lbImg.src = want;
+        if (lbImg.getAttribute("data-want") === want) {
+          lbImg.src = want;
+          lb.classList.remove("is-loading-hd");
+        }
       };
+      // 原图挂了（隧道抖动 / 文件缺失）：留着缩略图，别把这张也变成占位图
+      pre.onerror = function () { lb.classList.remove("is-loading-hd"); };
       pre.src = want;
     } else {
       lbImg.removeAttribute("data-want");
+      lb.classList.remove("is-loading-hd");
       lbImg.src = want;
     }
 
@@ -644,8 +659,52 @@
         },
         { once: true }
       );
+
+      /* ---------- 失败可见 + 可重试 ----------
+         2026-11-17 用户反馈「影像部分有视频无法读取」。
+         走 Cloudflare 隧道传 mp4，偶发 502/超时会触发 video 的 error 事件，
+         原来的实现什么都不做——用户只看到一块黑框，不知道是网卡了还是文件坏了。
+         现在：error 时给卡片挂 is-error（CSS 出一句说明），并放一个「重试」按钮。
+         重试就是换一个带时间戳的地址重新加载，绕开中间层可能缓存的失败响应。 */
       const frame = document.createElement("div");
       frame.className = "video-card__frame";
+      const showError = (msg) => {
+        card.classList.add("is-error");
+        card.classList.remove("is-offline");
+        let btn = card.querySelector(".video-card__retry");
+        if (!btn) {
+          btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "video-card__retry";
+          btn.textContent = "重试";
+          frame.appendChild(btn);
+        }
+        btn.hidden = false;
+        btn.onclick = () => {
+          card.classList.remove("is-error");
+          btn.hidden = true;
+          const base = String(v.src || "").split("?")[0];
+          if (!base) return;
+          vid.src = base + "?r=" + Date.now();
+          try { vid.load(); } catch (e) {}
+        };
+        if (msg) card.dataset.err = msg;
+      };
+      vid.addEventListener("error", () => {
+        // 只报真错：用户还没点播放时 preload=none 也可能给一个空 error，忽略
+        if (!vid.currentSrc && !vid.src) return;
+        showError("media-error");
+      });
+      // 挂太久没有任何数据 → 判超时（隧道带宽低时常见，别让人干等）
+      let stallT = null;
+      vid.addEventListener("loadstart", () => {
+        clearTimeout(stallT);
+        stallT = setTimeout(() => {
+          if (vid.readyState < 1) showError("timeout");
+        }, 45000);
+      });
+      vid.addEventListener("loadeddata", () => clearTimeout(stallT));
+
       frame.appendChild(vid);
       const body = document.createElement("div");
       body.className = "video-card__body";
@@ -682,12 +741,17 @@
   // 手机上看 3 列拍立得就太挤，愿望太多也会翻很久。
   Site.pageCfg = function () {
     const p = (Site.db && Site.db.meta && Site.db.meta.pages) || {};
-    return {
+    const cfg = {
       photosCols: Math.min(4, Math.max(1, +p.photosCols || 3)),   // 照片墙页列数
       quotesCols: Math.min(3, Math.max(1, +p.quotesCols || 2)),   // 随手记页列数
       wishLimit: Math.max(0, +p.wishLimit || 0),                  // 心愿单每组条数，0 = 全部
-      photosPerBatch: Math.min(120, Math.max(12, +p.photosPerBatch || 48)),
+      // 分页：一页几行、每行几列。默认 20 行 × 3 列 = 60 张/页，
+      // 562 张就是 10 页——翻十次能看完，滑到底要滑八万像素。
+      photosRows: Math.min(60, Math.max(2, +p.photosRows || 20)),
+      photosPerPage: 0, // 由下方按行×列算，别在数据里存冗余
     };
+    cfg.photosPerPage = Math.min(240, cfg.photosRows * Math.max(1, Math.min(4, cfg.photosCols)));
+    return cfg;
   };
 
   /* ---------- 首页配置（后台可调，缺省有默认值） ---------- */

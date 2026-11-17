@@ -3,12 +3,18 @@
 """
 album-push.py —— 相册后台的写入口（NAS 侧哑管道）
 
-职责只有五件事，不含任何业务规则（归类和文案都在前端 admin.js 里）：
-  ① 验口令        服务端存 sha256(盐+口令)，常数时间比较
+职责只有六件事，不含任何业务规则（归类和文案都在前端 admin.js 里）：
+  ⓪ 发令牌        POST /api/auth  校验口令，发一个短效令牌（进后台用）
+  ① 验口令        PBKDF2-HMAC-SHA256（pbkdf2$轮数$盐$dk），常数时间比较
   ② 验请求        体积 ≤2MB、JSON 可解析、顶层 key 白名单
   ③ 验文件        照片文件名在 /srv/pub/img 下真的存在（防死链）
   ④ 存档         旧版 content.json 存 /var/lib/tailscale/history/
   ⑤ 提交          PUT 到 GitHub，用 NAS 本地的 .gh_token
+
+口令为什么用 PBKDF2：口令只有 6 位数字，10^6 个候选空间。老格式是
+sha256(盐+口令)——单卡一秒能算几千万次，拿到 push-secret 就等于拿到口令。
+PBKDF2 20 万轮把单次校验拖到 ~50ms，爆破成本抬到万倍级，仍不影响正常使用。
+push-secret 里同时兼容老格式（盐:sha256），下次 --set-key 自动升级成新格式。
 
 为什么要有这一层（而不是浏览器直接连 GitHub）：
   - token 不进浏览器。浏览器泄漏最多丢一个口令，丢不了仓库写权限
@@ -17,7 +23,13 @@ album-push.py —— 相册后台的写入口（NAS 侧哑管道）
 
 用法：
   python3 album-push.py --set-key '<口令>'     # 生成/重置口令（写 push-secret）
+  python3 album-push.py --check                # 看一眼口令/token 有没有
   python3 album-push.py                        # 前台运行，监听 8787
+接口：
+  GET  /api/health   存活 + 有没有设过口令
+  POST /api/auth     {key} → {ok, token, ttl}   进后台的令牌（默认 12 小时）
+  POST /api/save     需 X-Admin-Auth 或 X-Admin-Key
+  POST /api/pull|run 运维，需 X-Admin-Key
 环境变量：
   ALBUM_PUSH_PORT   默认 8787
   ALBUM_PUSH_ROOT   静态根目录，默认 /srv/pub
@@ -60,8 +72,16 @@ RATE_MAX = 5            # 单 IP 每分钟 5 次（正常改文案根本用不�
 RATE_GLOBAL_MAX = 15    # 全局每分钟 15 次
 DROP_RATIO = 0.95       # 照片数掉到上次的 95% 以下就拒
 
+# 口令哈希：pbkdf2$<轮数>$<盐 hex>$<dk hex>
+PBKDF2_ITER = 200_000
+TOKEN_TTL = 12 * 3600   # 进后台的令牌有效期，够一个下午改文案
+TOKEN_MAX = 200         # 内存里最多留多少个令牌，超了先丢最老的
+
 _hits = {}              # ip -> [ts, ...]
 _g_hits = deque()       # 全局时间戳队列
+_tokens = {}            # token -> 过期时间戳
+_auth_fail = deque()    # 全局鉴权失败时间戳，用于「口令被爆破」刹车
+AUTH_FAIL_MAX = 12      # 一分钟内全局失败 12 次就短暂停止受理校验
 
 
 def log(msg):
@@ -78,30 +98,82 @@ def log(msg):
 
 
 def load_secret():
-    """返回 (salt, sha256hex)；文件不存在返回 (None, None)。"""
+    """返回 push-secret 里的原始字符串；文件不存在/为空返回 ""。"""
     try:
-        raw = SECRET_F.read_text(encoding="utf-8").strip()
-        salt, h = raw.split(":", 1)
-        return salt, h
-    except (OSError, ValueError):
-        return None, None
+        return SECRET_F.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
-def make_secret(key: str):
-    salt = secrets.token_hex(16)
-    h = hashlib.sha256((salt + key).encode("utf-8")).hexdigest()
+def make_secret(key: str, iter_: int = PBKDF2_ITER):
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", key.encode("utf-8"), salt, iter_, dklen=32)
     HOME.mkdir(parents=True, exist_ok=True)
-    SECRET_F.write_text(f"{salt}:{h}\n", encoding="utf-8")
+    SECRET_F.write_text(f"pbkdf2${iter_}${salt.hex()}${dk.hex()}\n", encoding="utf-8")
     os.chmod(SECRET_F, 0o600)
-    return salt, h
+    return SECRET_F
 
 
 def check_key(key: str) -> bool:
-    salt, want = load_secret()
-    if not salt:
+    """常数时间比对。兼容老的 `盐:sha256` 格式，升级靠下次 --set-key。"""
+    raw = load_secret()
+    if not raw or not key:
+        return False
+    if raw.startswith("pbkdf2$"):
+        try:
+            _, iter_s, salt_hex, dk_hex = raw.split("$", 3)
+            dk = hashlib.pbkdf2_hmac(
+                "sha256", key.encode("utf-8"), bytes.fromhex(salt_hex), int(iter_s), dklen=32
+            )
+            return hmac.compare_digest(dk.hex(), dk_hex)
+        except (ValueError, TypeError):
+            return False
+    try:
+        salt, want = raw.split(":", 1)
+    except ValueError:
         return False
     got = hashlib.sha256((salt + key).encode("utf-8")).hexdigest()
     return hmac.compare_digest(got, want)
+
+
+def note_fail():
+    """记一次口令失败；调用方据此判断要不要刹车。"""
+    now = time.time()
+    while _auth_fail and now - _auth_fail[0] > RATE_WINDOW:
+        _auth_fail.popleft()
+    _auth_fail.append(now)
+    return len(_auth_fail)
+
+
+def auth_braked() -> bool:
+    now = time.time()
+    while _auth_fail and now - _auth_fail[0] > RATE_WINDOW:
+        _auth_fail.popleft()
+    return len(_auth_fail) >= AUTH_FAIL_MAX
+
+
+def issue_token() -> str:
+    now = time.time()
+    for t, exp in list(_tokens.items()):          # 顺手清过期
+        if exp < now:
+            _tokens.pop(t, None)
+    while len(_tokens) >= TOKEN_MAX:              # 超量先踢最老的
+        _tokens.pop(next(iter(_tokens)), None)
+    tok = secrets.token_urlsafe(32)
+    _tokens[tok] = now + TOKEN_TTL
+    return tok
+
+
+def check_token(tok: str) -> bool:
+    if not tok:
+        return False
+    exp = _tokens.get(tok)
+    if not exp:
+        return False
+    if exp < time.time():
+        _tokens.pop(tok, None)
+        return False
+    return True
 
 
 def gh(path, method="GET", body=None, timeout=90):
@@ -289,15 +361,53 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"ok": True, "pid": p.pid, "script": name,
                                 "log": "https://<当前隧道>/wb_setup.log"})
 
+    # ── 进后台的口令校验 ──────────────────────────────────────────────
+    # 为什么单独一个接口：进后台和「提交」是两件事。进门校验一次，之后页面拿着
+    # 令牌改文案；点「保存并发布」时再问一次口令——两道门都落在 NAS 上，
+    # 因为 6 位数字的任何哈希放在前端 JS 里都是公开的，等于没设。
+    def _auth(self):
+        if auth_braked():
+            log(f"口令失败过多，暂停受理 ip={self.client_ip()}")
+            return self._json(429, {"ok": False, "error": "试错太多次了，等一分钟再来"})
+        if self.limited():
+            return self._json(429, {"ok": False, "error": "太频繁了，等一下再试"})
+
+        n = int(self.headers.get("Content-Length") or 0)
+        if n <= 0 or n > 4096:
+            return self._json(413, {"ok": False, "error": "体积异常"})
+        try:
+            body = json.loads(self.rfile.read(n).decode("utf-8"))
+        except Exception:
+            return self._json(400, {"ok": False, "error": "body 不是 JSON"})
+
+        key = str((body or {}).get("key") or "")
+        if not check_key(key):
+            hit = note_fail()
+            log(f"进门口令拒绝 ip={self.client_ip()} 窗口内失败={hit}")
+            time.sleep(0.4)                       # 拖慢爆破
+            return self._json(401, {"ok": False, "error": "口令不对"})
+
+        tok = issue_token()
+        log(f"进门口令通过 ip={self.client_ip()} ttl={TOKEN_TTL}s")
+        return self._json(200, {"ok": True, "token": tok, "ttl": TOKEN_TTL})
+
+    def _ok_admin(self) -> bool:
+        """令牌优先（进门时校验过），退回一次性口令（老页面 / 运维脚本）。"""
+        if check_token(self.headers.get("X-Admin-Auth", "")):
+            return True
+        return check_key(self.headers.get("X-Admin-Key", ""))
+
     def do_GET(self):
         if self.path.split("?")[0] == "/api/health":
-            salt, _ = load_secret()
-            self._json(200, {"ok": True, "key_set": bool(salt), "port": PORT})
+            self._json(200, {"ok": True, "key_set": bool(load_secret()), "port": PORT,
+                             "pbkdf2": load_secret().startswith("pbkdf2$")})
         else:
             self._json(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
         p = self.path.split("?")[0]
+        if p == "/api/auth":
+            return self._auth()
         if p == "/api/pull":
             return self._op("pull")
         if p == "/api/run":
@@ -308,9 +418,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.limited():
             return self._json(429, {"ok": False, "error": "太频繁了，等一下再试"})
 
-        key = self.headers.get("X-Admin-Key", "")
-        if not check_key(key):
-            log(f"口令拒绝 ip={self.client_ip()}")
+        if not self._ok_admin():
+            note_fail()
+            log(f"提交口令/令牌拒绝 ip={self.client_ip()}")
             time.sleep(0.4)                       # 拖慢爆破
             return self._json(401, {"ok": False, "error": "口令不对"})
 
@@ -385,15 +495,15 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     if len(sys.argv) >= 3 and sys.argv[1] == "--set-key":
         make_secret(sys.argv[2])
-        print(f"口令已写入 {SECRET_F}（0600）")
+        print(f"口令已写入 {SECRET_F}（pbkdf2，0600）")
         return 0
     if len(sys.argv) >= 2 and sys.argv[1] == "--check":
-        salt, _ = load_secret()
-        print("secret:", "已设置" if salt else "未设置", "| token:", "有" if TOKEN_F.exists() else "缺")
+        raw = load_secret()
+        fmt = "pbkdf2" if raw.startswith("pbkdf2$") else ("旧 sha256 格式（建议 --set-key 升级）" if raw else "未设置")
+        print("secret:", fmt, "| token:", "有" if TOKEN_F.exists() else "缺")
         return 0
 
-    salt, _ = load_secret()
-    if not salt:
+    if not load_secret():
         print("⚠ 还没设口令，先跑：python3 album-push.py --set-key '<口令>'", file=sys.stderr)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     log(f"listening 127.0.0.1:{PORT} root={ROOT} origin={ORIGIN}")
