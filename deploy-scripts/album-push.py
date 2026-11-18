@@ -47,6 +47,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -134,6 +135,37 @@ def check_key(key: str) -> bool:
         return False
     got = hashlib.sha256((salt + key).encode("utf-8")).hexdigest()
     return hmac.compare_digest(got, want)
+
+
+# ---------- 动态码 TOTP（RFC 6238）----------
+# 实现已抽到公共模块 totp_auth.py（拓展工具/验证码，运行副本与本脚本同目录）。
+# 本文件只保留调用面：名字不变，其他代码一行不用改。
+# ⚠ 部署时 totp_auth.py 必须和本脚本放在一起，缺了它服务起不来。
+import totp_auth as _t
+TOTP_STEP, TOTP_DIGITS, TOTP_SKEW = _t.STEP, _t.DIGITS, _t.SKEW
+TOTP_F, RECOVERY_F = _t.secret_file(), _t.recovery_file()
+totp_secret = _t.secret
+totp_enabled = _t.enabled
+totp_at = _t.totp_at
+check_totp = _t.check_totp
+check_recovery = _t.check_recovery
+make_totp = _t.make_totp
+recovery_file = _t.recovery_file
+_recovery_left = _t.recovery_left
+
+
+def _print_qr(text: str) -> bool:
+    """在终端打二维码。有 qrcode 库就用，没就退回只给手动密钥。"""
+    try:
+        import qrcode
+    except ImportError:
+        print("（终端没装 qrcode 库，跳过二维码，用下面的手动密钥即可）")
+        return False
+    q = qrcode.QRCode(border=1)
+    q.add_data(text)
+    q.make(fit=True)
+    q.print_ascii(invert=True)
+    return True
 
 
 def note_fail():
@@ -387,20 +419,37 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(0.4)                       # 拖慢爆破
             return self._json(401, {"ok": False, "error": "口令不对"})
 
+        # 动态码：开了就必须过。口令对了但码不对，不记 note_fail——
+        # 否则一个人输错手机验证码会把全站锁一分钟。
+        if totp_enabled():
+            code = str((body or {}).get("code") or "")
+            if not check_totp(code) and not check_recovery(code):
+                log(f"动态码拒绝 ip={self.client_ip()}")
+                time.sleep(0.4)
+                return self._json(401, {"ok": False, "error": "动态码不对", "totp": True})
+
         tok = issue_token()
         log(f"进门口令通过 ip={self.client_ip()} ttl={TOKEN_TTL}s")
         return self._json(200, {"ok": True, "token": tok, "ttl": TOKEN_TTL})
 
     def _ok_admin(self) -> bool:
-        """令牌优先（进门时校验过），退回一次性口令（老页面 / 运维脚本）。"""
+        """令牌优先（进门时校验过），退回一次性口令（老页面 / 运维脚本）。
+        开了动态码时，走 X-Admin-Key 的老通道还得多带 X-Admin-Code，否则只靠
+        静态口令就能绕过动态码。"""
         if check_token(self.headers.get("X-Admin-Auth", "")):
             return True
-        return check_key(self.headers.get("X-Admin-Key", ""))
+        if not check_key(self.headers.get("X-Admin-Key", "")):
+            return False
+        if totp_enabled():
+            code = self.headers.get("X-Admin-Code", "")
+            return check_totp(code) or check_recovery(code)
+        return True
 
     def do_GET(self):
+        # 对外只回一个存活信号。端口号、有没有设口令、存储格式这些都属于
+        # 内部信息，公开出去只会帮攻击者缩小范围。要看详情在本机跑 --check。
         if self.path.split("?")[0] == "/api/health":
-            self._json(200, {"ok": True, "key_set": bool(load_secret()), "port": PORT,
-                             "pbkdf2": load_secret().startswith("pbkdf2$")})
+            self._json(200, {"ok": True})
         else:
             self._json(404, {"ok": False, "error": "not found"})
 
@@ -501,6 +550,32 @@ def main():
         raw = load_secret()
         fmt = "pbkdf2" if raw.startswith("pbkdf2$") else ("旧 sha256 格式（建议 --set-key 升级）" if raw else "未设置")
         print("secret:", fmt, "| token:", "有" if TOKEN_F.exists() else "缺")
+        print("totp:  ", "开" if totp_enabled() else "关", "| 恢复码:", _recovery_left(), "个")
+        return 0
+    if len(sys.argv) >= 2 and sys.argv[1] == "--set-totp":
+        secret, codes, uri = make_totp()
+        print("动态码已开启。用手机验证器 App 扫下面这个二维码（或手动输入密钥）：\n")
+        _print_qr(uri)
+        print(f"\n手动输入：{secret}")
+        print("\n恢复码（手机丢了时用，每个只能用一次，抄到纸上，别存手机里）：")
+        for c in codes:
+            print("  " + c)
+        print(f"\n校验一次当前码：python3 album-push.py --check")
+        return 0
+    if len(sys.argv) >= 2 and sys.argv[1] == "--off-totp":
+        for f in (TOTP_F, RECOVERY_F):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        print("动态码已关闭（口令仍在，PBKDF2 照旧）")
+        return 0
+    if len(sys.argv) >= 2 and sys.argv[1] == "--show-totp":
+        s = totp_secret()
+        if not s:
+            print("动态码未开启。开启：python3 album-push.py --set-totp")
+            return 0
+        print("当前码:", totp_at(s), f"（{TOTP_STEP - int(time.time()) % TOTP_STEP} 秒后失效）")
         return 0
 
     if not load_secret():
