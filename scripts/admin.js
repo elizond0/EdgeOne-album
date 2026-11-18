@@ -32,6 +32,24 @@
     toastTimer = setTimeout(() => (t.hidden = true), 2800);
   }
 
+  /* ---------- 动态码显示状态 ----------
+     服务端对外不广播「开没开动态码」（那也属于内部信息），所以这里由本机记：
+     输错时服务端在 401 里带 totp:true，就把输入框亮出来并记住，下次直接显示。
+     没开过的人永远看不到这个框，不打扰。
+
+     这几个函数必须定义在使用之前：v8 之前把它们写在文件后半段，
+     函数声明虽然会提升，但同名的 const TOTP_HINT 在暂时性死区里，
+     整个 IIFE 在初始化阶段就抛错，于是下面的启动分支一行都没执行——
+     表现就是「刷新后后台空白、验证码框也不出来」。 */
+  const TOTP_HINT = "album-admin-totp";
+
+  function totpKnownOn() {
+    try { return localStorage.getItem(TOTP_HINT) === "1"; } catch (e) { return false; }
+  }
+  function markTotpOn(on) {
+    try { on ? localStorage.setItem(TOTP_HINT, "1") : localStorage.removeItem(TOTP_HINT); } catch (e) {}
+  }
+
   /* ---------- 口令：只在「保存并发布」时用一次 ----------
      2026-11-17 改：去掉了本机 SHA-256 登录锁（哈希写在公开仓库里、无盐，
      只挡得住随手点链接的人，却要每次登录多填一次，还会和 NAS 的 push-secret
@@ -92,16 +110,23 @@
     const note = $("#unlock-note");
     const row = $("#totp-row");
     const tin = $("#totp-input");
+
+    // 之前撞见过动态码就默认展开。这一步放在最前面、任何 await 之前：
+    // 放到探 NAS 之后的话，那几秒里用户已经对着「缺一个框」的界面在打字了。
+    if (row && totpKnownOn()) {
+      row.hidden = false;
+      if (tin) setTimeout(() => tin.focus(), 30);
+    }
+
     view.hidden = false;
     inp.focus();
 
-    // 之前撞见过动态码就默认展开，省得每次都要先错一次才知道要填
+    // 出错时才需要临时把框亮出来
     const showTotp = (on) => {
       if (!row) return;
       row.hidden = !on;
       if (on && tin) setTimeout(() => tin.focus(), 30);
     };
-    showTotp(totpKnownOn());
 
     // NAS 是否在线，先探一下，省得人输了口令才发现连不上
     const base = await nasBase();
@@ -716,19 +741,6 @@
     } catch (e) {
       return false;
     }
-  }
-
-  /* ---------- 动态码显示状态 ----------
-     服务端对外不广播「开没开动态码」（那也属于内部信息），所以这里由本机记：
-     输错时服务端若在 401 里带 totp:true，就把输入框亮出来并记住，下次直接显示。
-     没开过的人永远看不到这个框，不打扰。 */
-  const TOTP_HINT = "album-admin-totp";
-
-  function totpKnownOn() {
-    try { return localStorage.getItem(TOTP_HINT) === "1"; } catch (e) { return false; }
-  }
-  function markTotpOn(on) {
-    try { on ? localStorage.setItem(TOTP_HINT, "1") : localStorage.removeItem(TOTP_HINT); } catch (e) {}
   }
 
   async function nasPush(json) {
