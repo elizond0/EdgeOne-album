@@ -1,6 +1,6 @@
 {
  "version": 1,
- "builtAt": "2026-11-17",
+ "builtAt": "2026-11-18",
  "base": "",
  "meta": {
   "anniversary": "2025-12-05",
@@ -55,7 +55,7 @@
   },
   "pages": {
    "photosCols": 3,
-   "photosPerBatch": 48,
+   "photosRows": 20,
    "quotesCols": 2,
    "wishLimit": 0
   }
