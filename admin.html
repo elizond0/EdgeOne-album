@@ -32,8 +32,8 @@
         <!-- 动态码：只在 NAS 开了 TOTP 时出现（口令对了但缺码，服务端会提示） -->
         <div id="totp-row" hidden>
           <input class="modal__input" id="totp-input" type="text" inputmode="numeric" maxlength="9"
-                 placeholder="验证器 6 位动态码（或恢复码）" autocomplete="one-time-code" />
-          <p class="modal__hint modal__hint--mini">打开手机上的验证器 App，输入当前 6 位数字。手机丢了就用备份的恢复码。</p>
+                 placeholder="6 位动态码或恢复码" autocomplete="one-time-code" />
+          <p class="modal__hint modal__hint--mini">打开手机验证器 App，输入当前 6 位数字；手机丢了就填备份的恢复码。</p>
         </div>
         <p class="modal__error" id="unlock-error" hidden></p>
         <div class="gate-actions">
