@@ -60,7 +60,7 @@
     el.hidden = !msg;
   }
 
-  async function tryUnlock(key) {
+  async function tryUnlock(key, code) {
     const base = await nasBase();
     if (!base) throw new Error("NO_NAS");
     let r;
@@ -68,12 +68,17 @@
       r = await ghFetch(`${base}/api/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
+        body: JSON.stringify(code ? { key, code } : { key }),
       }, 15000);
     } catch (e) {
       throw new Error(e.name === "AbortError" ? "TIMEOUT" : "NO_NAS");
     }
-    if (r.status === 401) throw new Error("BAD_KEY");
+    if (r.status === 401) {
+      const j = await r.json().catch(() => ({}));
+      const err = new Error("BAD_KEY");
+      err.needTotp = !!j.totp;      // 口令对、动态码缺/错
+      throw err;
+    }
     if (r.status === 429) throw new Error("TOO_FAST");
     if (!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json().catch(() => ({}));
@@ -85,8 +90,18 @@
     const view = $("#unlock-view");
     const inp = $("#unlock-input");
     const note = $("#unlock-note");
+    const row = $("#totp-row");
+    const tin = $("#totp-input");
     view.hidden = false;
     inp.focus();
+
+    // 之前撞见过动态码就默认展开，省得每次都要先错一次才知道要填
+    const showTotp = (on) => {
+      if (!row) return;
+      row.hidden = !on;
+      if (on && tin) setTimeout(() => tin.focus(), 30);
+    };
+    showTotp(totpKnownOn());
 
     // NAS 是否在线，先探一下，省得人输了口令才发现连不上
     const base = await nasBase();
@@ -101,24 +116,37 @@
 
     const submit = async () => {
       const k = (inp.value || "").trim();
+      const code = (tin && tin.value || "").trim();
       if (!k) return unlockError("请先输入口令。");
+      if (row && !row.hidden && !code) return unlockError("请输入验证器上的 6 位动态码。");
       unlockError("");
       const btn = $("#unlock-ok");
       btn.disabled = true;
       btn.textContent = "校验中…";
       try {
-        const tok = await tryUnlock(k);
+        const tok = await tryUnlock(k, code);
         setAuthToken(tok);
+        if (!(row && row.hidden) || code) markTotpOn(true);   // 走过动态码这条路就记住
         view.hidden = true;
         inp.value = "";
+        if (tin) tin.value = "";
         await enter();
       } catch (e) {
-        const m = {
-          BAD_KEY: "口令不对，再试一次。",
-          NO_NAS: "连不上 NAS，没法校验口令。等 NAS 恢复再进。",
-          TIMEOUT: "NAS 没有响应，稍后再试。",
-          TOO_FAST: "试太多次了，歇一分钟再来。",
-        }[e.message] || ("校验失败：" + e.message);
+        let m;
+        if (e.needTotp) {
+          markTotpOn(true);
+          showTotp(true);
+          m = code
+            ? "动态码不对。注意它每 30 秒换一次，用最新的那个。"
+            : "这道后台还要求动态码，请在下面输入验证器上的 6 位数字。";
+        } else {
+          m = {
+            BAD_KEY: "口令不对，再试一次。",
+            NO_NAS: "连不上 NAS，没法校验口令。等 NAS 恢复再进。",
+            TIMEOUT: "NAS 没有响应，稍后再试。",
+            TOO_FAST: "试太多次了，歇一分钟再来。",
+          }[e.message] || ("校验失败：" + e.message);
+        }
         unlockError(m);
       } finally {
         btn.disabled = false;
@@ -128,6 +156,7 @@
 
     $("#unlock-ok").addEventListener("click", submit);
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    if (tin) tin.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
   }
 
   // 发布口令不缓存；进门拿的令牌在 nasPush() 里单独处理
@@ -287,10 +316,15 @@
     const sec = $("#publish-gate");
     const err = $("#gate-error");
     const inp = $("#gate-input");
+    const crow = $("#gate-totp-row");
+    const cin = $("#gate-totp-input");
     sec.hidden = false;
     inp.value = "";
-    inp.focus();
+    if (cin) cin.value = "";
+    if (crow) crow.hidden = !totpKnownOn();
+    (crow && !crow.hidden && cin ? cin : inp).focus();
     if (msg) { err.textContent = msg; err.hidden = false; } else { err.hidden = true; }
+    // 返回 {key, code}；取消返回 null
     return new Promise((res) => { gateResolve = res; });
   }
 
@@ -303,19 +337,26 @@
 
   $("#gate-ok").addEventListener("click", () => {
     const k = $("#gate-input").value.trim();
+    const crow = $("#gate-totp-row");
+    const c = (crow && !crow.hidden && $("#gate-totp-input")) ? $("#gate-totp-input").value.trim() : "";
+    const err = $("#gate-error");
     if (k.length < 6) {
-      const err = $("#gate-error");
       err.textContent = "口令至少 6 位。";
       err.hidden = false;
       return;
     }
-    closeGate(k);
+    closeGate({ key: k, code: c });
   });
   $("#gate-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") $("#gate-ok").click();
-    if (e.key === "Escape") closeGate("");
+    if (e.key === "Escape") closeGate(null);
   });
-  $("#gate-cancel").addEventListener("click", () => closeGate(""));
+  const gin = $("#gate-totp-input");
+  if (gin) gin.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("#gate-ok").click();
+    if (e.key === "Escape") closeGate(null);
+  });
+  $("#gate-cancel").addEventListener("click", () => closeGate(null));
 
   /* ---------- 站点文本 ---------- */
   function renderTexts() {
@@ -671,10 +712,23 @@
       const r = await ghFetch(`${base}/api/health`, { cache: "no-store" }, 5000);
       if (!r.ok) return false;
       const j = await r.json();
-      return !!j.key_set;          // 服务在但没设口令，视同不可用
+      return !!j.ok;               // 服务端对外只回 {ok:true}，不再暴露端口和口令状态
     } catch (e) {
       return false;
     }
+  }
+
+  /* ---------- 动态码显示状态 ----------
+     服务端对外不广播「开没开动态码」（那也属于内部信息），所以这里由本机记：
+     输错时服务端若在 401 里带 totp:true，就把输入框亮出来并记住，下次直接显示。
+     没开过的人永远看不到这个框，不打扰。 */
+  const TOTP_HINT = "album-admin-totp";
+
+  function totpKnownOn() {
+    try { return localStorage.getItem(TOTP_HINT) === "1"; } catch (e) { return false; }
+  }
+  function markTotpOn(on) {
+    try { on ? localStorage.setItem(TOTP_HINT, "1") : localStorage.removeItem(TOTP_HINT); } catch (e) {}
   }
 
   async function nasPush(json) {
@@ -684,14 +738,20 @@
     // 进门时拿到的令牌先顶上（省得每次发布都重输口令）；令牌过期了 NAS 会回 401，
     // 这时才现问口令，且只重试一次——口令只有 6 位，不能让它被反复试。
     let tok = getAuthToken();
-    let key = tok ? "" : (await askKey(gateRetry ? "口令不对，再输一次。" : ""));
-    if (!tok && !key) throw new Error("CANCELLED");
+    let key = "", code = "";
+    if (!tok) {
+      const got = await askKey(gateRetry ? "口令不对，再输一次。" : "");
+      if (!got) throw new Error("CANCELLED");
+      key = got.key; code = got.code;
+    }
 
     let r;
     for (let attempt = 0; attempt < 2; attempt++) {
       const headers = { "Content-Type": "application/json" };
-      if (key) headers["X-Admin-Key"] = key;
-      else headers["X-Admin-Auth"] = tok;
+      if (key) {
+        headers["X-Admin-Key"] = key;
+        if (code) headers["X-Admin-Code"] = code;   // 开了动态码时这条通道也得带
+      } else headers["X-Admin-Auth"] = tok;
       try {
         r = await ghFetch(`${base}/api/save`, { method: "POST", headers, body: json }, 120000);
       } catch (e) {
@@ -699,10 +759,13 @@
       }
       if (r.status !== 401) break;
       if (attempt === 1) throw new Error("BAD_KEY");
-      // 令牌失效：清掉，改问口令
+      // 令牌失效：清掉，改问口令（必要时连动态码一起问）
       if (tok) { setAuthToken(""); tok = ""; }
-      key = await askKey("口令不对，再输一次。");
-      if (!key) throw new Error("CANCELLED");
+      const again = await askKey(totpKnownOn()
+        ? "令牌过期了，重新输一次口令和动态码。"
+        : "令牌过期了，重新输一次口令。");
+      if (!again) throw new Error("CANCELLED");
+      key = again.key; code = again.code;
     }
 
     let j = {};
